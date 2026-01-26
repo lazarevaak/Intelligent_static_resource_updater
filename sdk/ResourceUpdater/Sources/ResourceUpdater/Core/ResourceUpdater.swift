@@ -25,4 +25,11 @@ public final class ResourceUpdater {
             }
         }
     }
+    
+    public func applyUpdates(
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        // TODO: download patches, validate, apply
+        completion(.success(()))
+    }
 }
