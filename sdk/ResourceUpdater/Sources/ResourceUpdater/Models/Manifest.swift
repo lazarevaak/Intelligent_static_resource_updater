@@ -2,7 +2,7 @@
 //  Manifest.swift
 //  ResourceUpdater
 //
-//  Created by MacBoock on 26.01.2026.
+//  Created by Alexandra Lazareva on 26.01.2026.
 //
 
 import Foundation
