@@ -9,3 +9,23 @@ DerivedData/
 # Backups
 *_backup/
 
+
+# Swift / SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode
+DerivedData/
+*.xcodeproj
+*.xcworkspace
+
+# VS Code
+.vscode/
+
+# Docker
+**/tmp/
+**/logs/
+
+# Env
+.env
