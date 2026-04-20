@@ -50,6 +50,21 @@ struct ManifestController {
         return .created
     }
 
+    func getPatchMeta(req: Request) async throws -> PatchMeta {
+        let appId = try requireParam(req, "appId")
+        let fromVersion = try requireParam(req, "fromVersion")
+        let toVersion = try requireParam(req, "toVersion")
+        try validateIdentifier(appId, name: "appId")
+        try validateIdentifier(fromVersion, name: "fromVersion")
+        try validateIdentifier(toVersion, name: "toVersion")
+
+        return try await storage.buildPatchMeta(
+            appId: appId,
+            fromVersion: fromVersion,
+            toVersion: toVersion
+        )
+    }
+
     private func validate(_ manifest: Manifest) throws {
         if manifest.version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw Abort(.badRequest, reason: "manifest.version is required")
@@ -68,6 +83,7 @@ struct ManifestController {
             if entry.hash.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 throw Abort(.badRequest, reason: "resource.hash is required")
             }
+            try validateHash(entry.hash)
             if entry.size < 0 {
                 throw Abort(.badRequest, reason: "resource.size must be >= 0")
             }
@@ -90,6 +106,17 @@ struct ManifestController {
         }
         if path.contains("..") {
             throw Abort(.badRequest, reason: "resource.path must not contain '..'")
+        }
+    }
+
+    private func validateHash(_ hash: String) throws {
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        let trimmed = hash.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count < 8 || trimmed.count > 128 {
+            throw Abort(.badRequest, reason: "resource.hash has invalid length")
+        }
+        if trimmed.unicodeScalars.contains(where: { !allowed.contains($0) }) {
+            throw Abort(.badRequest, reason: "resource.hash contains invalid characters")
         }
     }
 
