@@ -29,3 +29,6 @@ DerivedData/
 
 # Env
 .env
+
+# Server runtime artifacts
+server/ResourceUpdateServer/Public/manifests/

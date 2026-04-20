@@ -61,6 +61,53 @@ actor ManifestStorage {
             .sorted()
     }
 
+    func buildPatchMeta(appId: String, fromVersion: String, toVersion: String) throws -> PatchMeta {
+        let fromManifest = try load(appId: appId, version: fromVersion)
+        let toManifest = try load(appId: appId, version: toVersion)
+
+        let fromByPath = Dictionary(uniqueKeysWithValues: fromManifest.resources.map { ($0.path, $0) })
+        let toByPath = Dictionary(uniqueKeysWithValues: toManifest.resources.map { ($0.path, $0) })
+
+        var added: [ResourceEntry] = []
+        var changed: [ChangedResource] = []
+        var removed: [String] = []
+
+        for (path, target) in toByPath {
+            guard let source = fromByPath[path] else {
+                added.append(target)
+                continue
+            }
+            if source.hash != target.hash || source.size != target.size {
+                changed.append(
+                    ChangedResource(
+                        path: path,
+                        fromHash: source.hash,
+                        toHash: target.hash,
+                        size: target.size
+                    )
+                )
+            }
+        }
+
+        for path in fromByPath.keys where toByPath[path] == nil {
+            removed.append(path)
+        }
+
+        added.sort { $0.path < $1.path }
+        changed.sort { $0.path < $1.path }
+        removed.sort()
+
+        return PatchMeta(
+            appId: appId,
+            fromVersion: fromVersion,
+            toVersion: toVersion,
+            generatedAt: Date(),
+            added: added,
+            changed: changed,
+            removed: removed
+        )
+    }
+
     private func latestVersion(appId: String) throws -> String {
         let pointerURL = latestPointerURL(appId: appId)
         guard FileManager.default.fileExists(atPath: pointerURL.path) else {
