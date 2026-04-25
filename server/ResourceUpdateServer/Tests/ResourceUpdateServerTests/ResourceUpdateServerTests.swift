@@ -7,6 +7,8 @@ import Testing
 @Suite("App Tests")
 struct ResourceUpdateServerTests {
     private let publishToken = "dev-ci-token"
+    private let metricsToken = "dev-metrics-token"
+    private let metricsAllowedIP = "203.0.113.10"
     private let signingPrimaryPrivateKeyBase64 = Curve25519.Signing.PrivateKey().rawRepresentation.base64EncodedString()
     private let signingSecondaryPrivateKeyBase64 = Curve25519.Signing.PrivateKey().rawRepresentation.base64EncodedString()
     private let signingKeyId = "test-key-active"
@@ -406,6 +408,331 @@ struct ResourceUpdateServerTests {
                     #expect(res.headers.first(name: "X-Updates-Signature") != nil)
                     let decoded = try? res.content.decode(UpdatesResponse.self)
                     #expect(decoded?.decision == "no-update")
+                }
+            )
+        }
+    }
+
+    @Test("ETag and 304 work for updates/latest/version/patch")
+    func etagAndNotModifiedFlow() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let fromVersion = "1.0.0"
+            let toVersion = "1.1.0"
+
+            let fromManifest = Manifest(
+                schemaVersion: 1,
+                minSdkVersion: "1.0",
+                version: fromVersion,
+                generatedAt: Date(),
+                resources: []
+            )
+            let toManifest = Manifest(
+                schemaVersion: 1,
+                minSdkVersion: "2.0",
+                version: toVersion,
+                generatedAt: Date(),
+                resources: []
+            )
+            let patchData = Data(#"{"schemaVersion":1,"appId":"demo","fromVersion":"1.0.0","toVersion":"1.1.0","generatedAt":"2026-01-01T00:00:00Z","operations":[]}"#.utf8)
+            let patchHash = sha256(patchData)
+
+            try await publishManifest(app: app, appId: appId, version: fromVersion, manifest: fromManifest)
+            try await publishManifest(app: app, appId: appId, version: toVersion, manifest: toManifest)
+
+            try await app.testing().test(
+                .POST,
+                "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)/upload",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: UUID().uuidString)
+                    req.headers.replaceOrAdd(name: "X-Patch-SHA256", value: patchHash)
+                    req.body = .init(data: patchData)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .created)
+                }
+            )
+
+            var etagVersion: String?
+            try await app.testing().test(
+                .GET,
+                "v1/manifest/\(appId)/version/\(toVersion)",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    etagVersion = res.headers.first(name: "ETag")
+                    #expect(res.headers.first(name: "Cache-Control")?.contains("immutable") == true)
+                }
+            )
+            try await app.testing().test(
+                .GET,
+                "v1/manifest/\(appId)/version/\(toVersion)",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "If-None-Match", value: etagVersion ?? "")
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .notModified)
+                }
+            )
+
+            var etagLatest: String?
+            try await app.testing().test(
+                .GET,
+                "v1/manifest/\(appId)/latest",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    etagLatest = res.headers.first(name: "ETag")
+                    #expect(res.headers.first(name: "Cache-Control")?.contains("must-revalidate") == true)
+                }
+            )
+            try await app.testing().test(
+                .GET,
+                "v1/manifest/\(appId)/latest",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "If-None-Match", value: etagLatest ?? "")
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .notModified)
+                }
+            )
+
+            var etagPatch: String?
+            try await app.testing().test(
+                .GET,
+                "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    etagPatch = res.headers.first(name: "ETag")
+                    #expect(res.headers.first(name: "Cache-Control")?.contains("immutable") == true)
+                }
+            )
+            try await app.testing().test(
+                .GET,
+                "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "If-None-Match", value: etagPatch ?? "")
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .notModified)
+                }
+            )
+
+            var etagUpdates: String?
+            try await app.testing().test(
+                .GET,
+                "v1/updates/\(appId)?fromVersion=\(fromVersion)&sdkVersion=2.1",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    etagUpdates = res.headers.first(name: "ETag")
+                    #expect(res.headers.first(name: "Cache-Control")?.contains("must-revalidate") == true)
+                }
+            )
+            try await app.testing().test(
+                .GET,
+                "v1/updates/\(appId)?fromVersion=\(fromVersion)&sdkVersion=2.1",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "If-None-Match", value: etagUpdates ?? "")
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .notModified)
+                }
+            )
+        }
+    }
+
+    @Test("GET /v1/metrics returns per-endpoint API metrics")
+    func apiMetricsEndpoint() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let fromVersion = "1.0.0"
+            let toVersion = "1.1.0"
+            let fromManifest = makeEmptyManifest(version: fromVersion)
+            let toManifest = makeEmptyManifest(version: toVersion)
+            let patchData = Data(#"{"schemaVersion":1,"appId":"demo","fromVersion":"1.0.0","toVersion":"1.1.0","generatedAt":"2026-01-01T00:00:00Z","operations":[]}"#.utf8)
+            let patchHash = sha256(patchData)
+
+            try await publishManifest(app: app, appId: appId, version: fromVersion, manifest: fromManifest)
+            try await publishManifest(app: app, appId: appId, version: toVersion, manifest: toManifest)
+
+            try await app.testing().test(
+                .POST,
+                "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)/upload",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: UUID().uuidString)
+                    req.headers.replaceOrAdd(name: "X-Patch-SHA256", value: patchHash)
+                    req.body = .init(data: patchData)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .created)
+                }
+            )
+
+            var manifestEtag: String?
+            try await app.testing().test(
+                .GET,
+                "v1/manifest/\(appId)/version/\(toVersion)",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    manifestEtag = res.headers.first(name: "ETag")
+                }
+            )
+            try await app.testing().test(
+                .GET,
+                "v1/manifest/\(appId)/version/\(toVersion)",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "If-None-Match", value: manifestEtag ?? "")
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .notModified)
+                }
+            )
+
+            var patchEtag: String?
+            try await app.testing().test(
+                .GET,
+                "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    patchEtag = res.headers.first(name: "ETag")
+                }
+            )
+            try await app.testing().test(
+                .GET,
+                "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "If-None-Match", value: patchEtag ?? "")
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .notModified)
+                }
+            )
+
+            try await app.testing().test(
+                .GET,
+                "v1/updates/\(appId)?fromVersion=\(fromVersion)&sdkVersion=2.0",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                }
+            )
+
+            try await app.testing().test(
+                .GET,
+                "v1/metrics",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-Metrics-Token", value: metricsToken)
+                    req.headers.replaceOrAdd(name: "X-Forwarded-For", value: metricsAllowedIP)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    let snapshot = try? res.content.decode(APIMetricsSnapshot.self)
+                    #expect(snapshot != nil)
+                    let manifest = snapshot?.endpoints.first(where: { $0.endpoint == "manifest" })
+                    let patch = snapshot?.endpoints.first(where: { $0.endpoint == "patch" })
+                    let updates = snapshot?.endpoints.first(where: { $0.endpoint == "updates" })
+                    #expect(manifest != nil)
+                    #expect(patch != nil)
+                    #expect(updates != nil)
+                    #expect((manifest?.totalRequests ?? 0) >= 2)
+                    #expect((manifest?.status304 ?? 0) >= 1)
+                    #expect((patch?.totalRequests ?? 0) >= 2)
+                    #expect((patch?.status304 ?? 0) >= 1)
+                    #expect((updates?.totalRequests ?? 0) >= 1)
+                    #expect((updates?.latencyMs.p95 ?? 0) >= 0)
+                    #expect((updates?.averageResponseBytes ?? 0) >= 0)
+                }
+            )
+        }
+    }
+
+    @Test("GET /metrics returns Prometheus text format")
+    func prometheusMetricsEndpoint() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let version = "1.0.0"
+            let manifest = makeEmptyManifest(version: version)
+
+            try await publishManifest(app: app, appId: appId, version: version, manifest: manifest)
+
+            try await app.testing().test(
+                .GET,
+                "v1/manifest/\(appId)/latest",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                }
+            )
+
+            try await app.testing().test(
+                .GET,
+                "metrics",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-Metrics-Token", value: metricsToken)
+                    req.headers.replaceOrAdd(name: "X-Forwarded-For", value: metricsAllowedIP)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    #expect(res.headers.contentType?.description.contains("text/plain") == true)
+                    let body = String(buffer: res.body)
+                    #expect(body.contains("# HELP resource_update_api_requests_total"))
+                    #expect(body.contains(#"resource_update_api_requests_total{endpoint="manifest",status_class="2xx"}"#))
+                    #expect(body.contains(#"resource_update_api_requests_304_total{endpoint="manifest"}"#))
+                    #expect(body.contains(#"# TYPE resource_update_api_latency_ms histogram"#))
+                    #expect(body.contains(#"resource_update_api_latency_ms_bucket{endpoint="manifest",le="5"}"#))
+                    #expect(body.contains(#"resource_update_api_latency_ms_sum{endpoint="manifest"}"#))
+                    #expect(body.contains(#"resource_update_api_latency_ms_count{endpoint="manifest"}"#))
+                    #expect(body.contains(#"resource_update_api_response_bytes_bucket{endpoint="manifest",le="1024"}"#))
+                    #expect(body.contains(#"resource_update_api_response_bytes_sum{endpoint="manifest"}"#))
+                    #expect(body.contains(#"resource_update_api_response_bytes_count{endpoint="manifest"}"#))
+                }
+            )
+        }
+    }
+
+    @Test("Metrics endpoints require token")
+    func metricsRequireToken() async throws {
+        try await withConfiguredApp { app in
+            try await app.testing().test(
+                .GET,
+                "metrics",
+                afterResponse: { res async in
+                    #expect(res.status == .unauthorized)
+                }
+            )
+
+            try await app.testing().test(
+                .GET,
+                "v1/metrics",
+                afterResponse: { res async in
+                    #expect(res.status == .unauthorized)
+                }
+            )
+        }
+    }
+
+    @Test("Metrics allowlist denies unknown IP and allows configured IP")
+    func metricsAllowlist() async throws {
+        try await withConfiguredApp { app in
+            try await app.testing().test(
+                .GET,
+                "metrics",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-Metrics-Token", value: metricsToken)
+                    req.headers.replaceOrAdd(name: "X-Forwarded-For", value: "198.51.100.7")
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .forbidden)
+                }
+            )
+
+            try await app.testing().test(
+                .GET,
+                "metrics",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-Metrics-Token", value: metricsToken)
+                    req.headers.replaceOrAdd(name: "X-Forwarded-For", value: metricsAllowedIP)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
                 }
             )
         }
@@ -985,6 +1312,8 @@ struct ResourceUpdateServerTests {
 
     private func withConfiguredApp(_ body: (Application) async throws -> Void) async throws {
         setenv("CI_PUBLISH_TOKEN", publishToken, 1)
+        setenv("METRICS_TOKEN", metricsToken, 1)
+        setenv("METRICS_ALLOWLIST", metricsAllowedIP, 1)
         setenv("SIGNING_KEYS_JSON", makeSigningKeysJSON(), 1)
         setenv("SIGNING_ACTIVE_KEY_ID", signingKeyId, 1)
         unsetenv("SIGNING_PRIVATE_KEY_BASE64")

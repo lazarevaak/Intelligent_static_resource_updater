@@ -75,6 +75,8 @@ Optional environment:
 - Backward-compatible single-key mode:
   - `SIGNING_PRIVATE_KEY_BASE64` (Ed25519 private key raw 32 bytes in base64)
   - `SIGNING_KEY_ID` (optional, default: `main`)
+- `METRICS_TOKEN` (optional, required to enable secured metrics access by token)
+- `METRICS_ALLOWLIST` (optional, comma-separated client IP allowlist for metrics, e.g. `127.0.0.1,::1,10.0.0.5`)
 
 ## Test
 
@@ -210,7 +212,76 @@ SDK validation for `/v1/updates`:
 - verify signature in `X-Updates-Signature` for raw body using public key from `/v1/keys`;
 - trust `decision/reason/url` only after signature verification.
 
-### 5) POST publish manifest
+Cache headers and conditional GET:
+- `GET /v1/manifest/:appId/latest`: `Cache-Control: public, max-age=30, must-revalidate`
+- `GET /v1/updates/:appId`: `Cache-Control: public, max-age=15, must-revalidate`
+- `GET /v1/manifest/:appId/version/:version`: `Cache-Control: public, max-age=31536000, immutable`
+- `GET /v1/patch/:appId/from/:fromVersion/to/:toVersion`: `Cache-Control: public, max-age=31536000, immutable`
+- all endpoints above return `ETag`, support `If-None-Match`, and may return `304 Not Modified`.
+
+### 5) GET API metrics
+
+`GET /v1/metrics`
+
+Requires metrics access:
+- `X-Metrics-Token: <token>` or `Authorization: Bearer <token>` when `METRICS_TOKEN` is set
+- client IP must be in `METRICS_ALLOWLIST` when allowlist is set
+
+Response `200 OK`:
+
+```json
+{
+  "generatedAt": "2026-04-25T20:00:00Z",
+  "endpoints": [
+    {
+      "endpoint": "updates",
+      "totalRequests": 42,
+      "status2xx": 40,
+      "status4xx": 0,
+      "status5xx": 0,
+      "status304": 8,
+      "notModifiedRatio": 0.1904761905,
+      "averageResponseBytes": 512.8,
+      "latencyMs": { "p50": 1.2, "p95": 3.8, "p99": 5.1 }
+    }
+  ]
+}
+```
+
+Metrics are aggregated separately for `updates`, `manifest`, `patch`.
+If metrics protection is not configured, metrics endpoints return `404 Not Found`.
+
+Prometheus export:
+
+`GET /metrics`
+
+Response `200 OK` with `Content-Type: text/plain; version=0.0.4; charset=utf-8`
+
+Requires the same metrics access rules as `/v1/metrics`.
+
+Example:
+
+```text
+# HELP resource_update_api_requests_total Total API requests by endpoint group and status class.
+# TYPE resource_update_api_requests_total counter
+resource_update_api_requests_total{endpoint="manifest",status_class="2xx"} 10
+resource_update_api_requests_304_total{endpoint="manifest"} 3
+resource_update_api_not_modified_ratio{endpoint="manifest"} 0.3
+resource_update_api_response_bytes_avg{endpoint="manifest"} 245.4
+# TYPE resource_update_api_latency_ms histogram
+resource_update_api_latency_ms_bucket{endpoint="manifest",le="1"} 4
+resource_update_api_latency_ms_bucket{endpoint="manifest",le="5"} 10
+resource_update_api_latency_ms_bucket{endpoint="manifest",le="+Inf"} 10
+resource_update_api_latency_ms_sum{endpoint="manifest"} 18.4
+resource_update_api_latency_ms_count{endpoint="manifest"} 10
+# TYPE resource_update_api_response_bytes histogram
+resource_update_api_response_bytes_bucket{endpoint="manifest",le="1024"} 10
+resource_update_api_response_bytes_bucket{endpoint="manifest",le="+Inf"} 10
+resource_update_api_response_bytes_sum{endpoint="manifest"} 2454
+resource_update_api_response_bytes_count{endpoint="manifest"} 10
+```
+
+### 6) POST publish manifest
 
 `POST /v1/manifest/:appId/version/:version`
 
@@ -243,7 +314,7 @@ Responses:
 - `400 Bad Request` for validation errors
 - `401 Unauthorized` for missing/invalid CI token
 
-### 6) POST patch artifact upload
+### 7) POST patch artifact upload
 
 `POST /v1/patch/:appId/from/:fromVersion/to/:toVersion/upload`
 
@@ -267,7 +338,7 @@ Responses:
 - `400 Bad Request` for hash/size mismatch
 - `404 Not Found` if `fromVersion` or `toVersion` manifest does not exist
 
-### 7) GET patch
+### 8) GET patch
 
 `GET /v1/patch/:appId/from/:fromVersion/to/:toVersion`
 
@@ -331,7 +402,7 @@ SDK apply rules:
     `result.count == delta.targetSize == size`;
 - if any operation or validation fails, rollback to snapshot and return error.
 
-### 8) POST resource upload
+### 9) POST resource upload
 
 `POST /v1/resource/:appId/upload`
 
@@ -349,7 +420,7 @@ Responses:
 - `400 Bad Request` for hash/size mismatch
 - `401 Unauthorized` for invalid publish token
 
-### 9) GET resource by hash
+### 10) GET resource by hash
 
 `GET /v1/resource/:appId/hash/:hash`
 
@@ -357,7 +428,7 @@ Response: raw binary (`application/octet-stream`) with headers:
 - `X-Resource-Hash`
 - `X-Resource-Size`
 
-### 10) GET patch meta
+### 11) GET patch meta
 
 `GET /v1/patch/:appId/from/:fromVersion/to/:toVersion/meta`
 

@@ -6,6 +6,7 @@ struct ServerConfig {
     let artifactBackend: ArtifactBackend
     let s3: S3Config?
     let signing: SigningConfig
+    let metrics: MetricsConfig
 
     enum ArtifactBackend: String {
         case local
@@ -30,6 +31,15 @@ struct ServerConfig {
 
         let activeKeyId: String
         let keys: [Key]
+    }
+
+    struct MetricsConfig {
+        let token: String?
+        let allowlist: Set<String>
+
+        var isEnabled: Bool {
+            token != nil || !allowlist.isEmpty
+        }
     }
 
     static func fromEnvironment() throws -> ServerConfig {
@@ -60,12 +70,29 @@ struct ServerConfig {
             s3Config = nil
         }
         let signingConfig = try makeSigningConfig()
+        let metricsConfig = makeMetricsConfig()
         return ServerConfig(
             publishToken: token,
             artifactBackend: backend,
             s3: s3Config,
-            signing: signingConfig
+            signing: signingConfig,
+            metrics: metricsConfig
         )
+    }
+
+    private static func makeMetricsConfig() -> MetricsConfig {
+        let token = Environment.get("METRICS_TOKEN")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedToken = (token?.isEmpty == false) ? token : nil
+
+        let allowlist = Set(
+            (Environment.get("METRICS_ALLOWLIST") ?? "")
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        )
+
+        return MetricsConfig(token: normalizedToken, allowlist: allowlist)
     }
 
     private static func makeSigningConfig() throws -> SigningConfig {

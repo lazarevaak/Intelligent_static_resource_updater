@@ -21,7 +21,18 @@ func routes(_ app: Application, config: ServerConfig) throws {
     )
 
     app.get { _ in "Серв запущен все работает" }
+    app.get("metrics") { req async throws -> Response in
+        try authorizeMetricsAccess(req: req, config: config)
+        let body = await req.application.apiMetricsCollector.prometheusText()
+        let response = Response(status: .ok, body: .init(string: body))
+        response.headers.replaceOrAdd(name: .contentType, value: "text/plain; version=0.0.4; charset=utf-8")
+        return response
+    }
     let v1 = app.grouped("v1")
+    v1.get("metrics") { req async throws -> APIMetricsSnapshot in
+        try authorizeMetricsAccess(req: req, config: config)
+        return await req.application.apiMetricsCollector.snapshot()
+    }
     v1.get("keys", use: manifestController.getSigningKeys)
     v1.get("keys", ":keyId", use: manifestController.getSigningKey)
     v1.get("manifest", ":appId", "latest", use: manifestController.getLatestManifest)
@@ -33,4 +44,37 @@ func routes(_ app: Application, config: ServerConfig) throws {
     v1.post("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", "upload", use: manifestController.uploadPatch)
     v1.get("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", use: manifestController.getPatch)
     v1.get("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", "meta", use: manifestController.getPatchMeta)
+}
+
+private func authorizeMetricsAccess(req: Request, config: ServerConfig) throws {
+    guard config.metrics.isEnabled else {
+        throw Abort(.notFound)
+    }
+
+    if let expectedToken = config.metrics.token {
+        let bearerToken = req.headers.bearerAuthorization?.token
+        let headerToken = req.headers.first(name: "X-Metrics-Token")
+        let providedToken = bearerToken ?? headerToken
+        guard providedToken == expectedToken else {
+            throw Abort(.unauthorized, reason: "invalid metrics token")
+        }
+    }
+
+    if !config.metrics.allowlist.isEmpty {
+        guard let clientIP = clientIPAddress(req: req),
+              config.metrics.allowlist.contains(clientIP) else {
+            throw Abort(.forbidden, reason: "metrics access denied for client IP")
+        }
+    }
+}
+
+private func clientIPAddress(req: Request) -> String? {
+    if let forwarded = req.headers.first(name: "X-Forwarded-For")?
+        .split(separator: ",")
+        .first?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+       !forwarded.isEmpty {
+        return forwarded
+    }
+    return req.remoteAddress?.ipAddress
 }

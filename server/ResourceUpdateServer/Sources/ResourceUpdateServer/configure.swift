@@ -17,9 +17,10 @@ public func configure(_ app: Application) async throws {
     contentConfig.use(decoder: decoder, for: .json)
 
     ContentConfiguration.global = contentConfig
+    app.apiMetricsCollector = APIMetricsCollector()
     app.middleware.use(RequestIDMiddleware())
     app.middleware.use(APIErrorMiddleware())
-    app.middleware.use(RequestLoggingMiddleware())
+    app.middleware.use(RequestLoggingMiddleware(metrics: app.apiMetricsCollector))
 
     let config = try ServerConfig.fromEnvironment()
     var metadata: Logger.Metadata = [
