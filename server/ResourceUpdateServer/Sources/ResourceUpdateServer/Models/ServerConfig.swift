@@ -20,8 +20,12 @@ struct ServerConfig {
         let usePathStyle: Bool
     }
 
-    static func fromEnvironment() -> ServerConfig {
-        let token = Environment.get("CI_PUBLISH_TOKEN") ?? "dev-ci-token"
+    static func fromEnvironment() throws -> ServerConfig {
+        guard let token = Environment.get("CI_PUBLISH_TOKEN")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty
+        else {
+            throw Abort(.internalServerError, reason: "CI_PUBLISH_TOKEN is required")
+        }
         let backendValue = Environment.get("ARTIFACT_BACKEND")?.lowercased()
         let backend = ArtifactBackend(rawValue: backendValue ?? "local") ?? .local
         let s3Config: S3Config?

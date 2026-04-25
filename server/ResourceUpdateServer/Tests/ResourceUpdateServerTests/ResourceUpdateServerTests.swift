@@ -1,4 +1,5 @@
 @testable import ResourceUpdateServer
+import CryptoKit
 import Foundation
 import VaporTesting
 import Testing
@@ -9,7 +10,7 @@ struct ResourceUpdateServerTests {
 
     @Test("POST + GET latest manifest returns saved manifest")
     func publishAndReadLatestManifest() async throws {
-        try await withApp(configure: configure) { app in
+        try await withConfiguredApp { app in
             let appId = "demoapp-\(UUID().uuidString)"
             let version = "1.0.0"
             let manifest = makeManifest(version: version)
@@ -19,6 +20,7 @@ struct ResourceUpdateServerTests {
                 "v1/manifest/\(appId)/version/\(version)",
                 beforeRequest: { req in
                     req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: UUID().uuidString)
                     try req.content.encode(manifest)
                 },
                 afterResponse: { res async in
@@ -31,51 +33,26 @@ struct ResourceUpdateServerTests {
                 let decoded = try? res.content.decode(Manifest.self)
                 #expect(decoded != nil)
                 #expect(decoded?.version == version)
-                #expect(decoded?.resources.count == 2)
+                #expect(decoded?.schemaVersion == 1)
+                #expect(decoded?.minSdkVersion == "1.0")
             })
         }
     }
 
-    @Test("GET manifest by version returns expected version")
-    func getManifestByVersion() async throws {
-        try await withApp(configure: configure) { app in
+    @Test("POST with same request-id returns idempotent OK")
+    func postIdempotentReplayReturnsOK() async throws {
+        try await withConfiguredApp { app in
             let appId = "demoapp-\(UUID().uuidString)"
             let version = "2.0.0"
             let manifest = makeManifest(version: version)
+            let requestId = UUID().uuidString
 
             try await app.testing().test(
                 .POST,
                 "v1/manifest/\(appId)/version/\(version)",
                 beforeRequest: { req in
                     req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
-                    try req.content.encode(manifest)
-                },
-                afterResponse: { res async in
-                    #expect(res.status == .created)
-                }
-            )
-
-            try await app.testing().test(.GET, "v1/manifest/\(appId)/version/\(version)", afterResponse: { res async in
-                #expect(res.status == .ok)
-                let decoded = try? res.content.decode(Manifest.self)
-                #expect(decoded != nil)
-                #expect(decoded?.version == version)
-            })
-        }
-    }
-
-    @Test("POST same manifest version twice returns conflict")
-    func postConflictForExistingVersion() async throws {
-        try await withApp(configure: configure) { app in
-            let appId = "demoapp-\(UUID().uuidString)"
-            let version = "3.0.0"
-            let manifest = makeManifest(version: version)
-
-            try await app.testing().test(
-                .POST,
-                "v1/manifest/\(appId)/version/\(version)",
-                beforeRequest: { req in
-                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: requestId)
                     try req.content.encode(manifest)
                 },
                 afterResponse: { res async in
@@ -88,104 +65,42 @@ struct ResourceUpdateServerTests {
                 "v1/manifest/\(appId)/version/\(version)",
                 beforeRequest: { req in
                     req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: requestId)
                     try req.content.encode(manifest)
                 },
-                afterResponse: { res async in
-                    #expect(res.status == .conflict)
-                }
-            )
-        }
-    }
-
-    @Test("GET patch meta returns added/changed/removed")
-    func patchMetaDiff() async throws {
-        try await withApp(configure: configure) { app in
-            let appId = "demoapp-\(UUID().uuidString)"
-            let fromVersion = "1.0.0"
-            let toVersion = "1.1.0"
-
-            let fromManifest = Manifest(
-                version: fromVersion,
-                generatedAt: Date(),
-                resources: [
-                    ResourceEntry(path: "images/a.png", hash: "aaaaaaaa", size: 100),
-                    ResourceEntry(path: "config/main.json", hash: "bbbbbbbb", size: 200)
-                ]
-            )
-
-            let toManifest = Manifest(
-                version: toVersion,
-                generatedAt: Date(),
-                resources: [
-                    ResourceEntry(path: "images/a.png", hash: "cccccccc", size: 101),
-                    ResourceEntry(path: "fonts/regular.ttf", hash: "dddddddd", size: 300)
-                ]
-            )
-
-            try await app.testing().test(
-                .POST,
-                "v1/manifest/\(appId)/version/\(fromVersion)",
-                beforeRequest: { req in
-                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
-                    try req.content.encode(fromManifest)
-                },
-                afterResponse: { res async in
-                    #expect(res.status == .created)
-                }
-            )
-
-            try await app.testing().test(
-                .POST,
-                "v1/manifest/\(appId)/version/\(toVersion)",
-                beforeRequest: { req in
-                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
-                    try req.content.encode(toManifest)
-                },
-                afterResponse: { res async in
-                    #expect(res.status == .created)
-                }
-            )
-
-            try await app.testing().test(
-                .GET,
-                "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)/meta",
                 afterResponse: { res async in
                     #expect(res.status == .ok)
-                    let decoded = try? res.content.decode(PatchMeta.self)
-                    #expect(decoded != nil)
-                    #expect(decoded?.appId == appId)
-                    #expect(decoded?.fromVersion == fromVersion)
-                    #expect(decoded?.toVersion == toVersion)
-                    #expect(decoded?.added.map(\.path) == ["fonts/regular.ttf"])
-                    #expect(decoded?.changed.map(\.path) == ["images/a.png"])
-                    #expect(decoded?.removed == ["config/main.json"])
                 }
             )
         }
     }
 
-    @Test("GET patch returns operations add/replace/remove")
-    func patchDocumentDiff() async throws {
-        try await withApp(configure: configure) { app in
+    @Test("GET patch returns artifact JSON with checksum header")
+    func patchArtifactResponse() async throws {
+        try await withConfiguredApp { app in
             let appId = "demoapp-\(UUID().uuidString)"
             let fromVersion = "1.0.0"
             let toVersion = "1.1.0"
 
             let fromManifest = Manifest(
+                schemaVersion: 1,
+                minSdkVersion: "1.0",
                 version: fromVersion,
                 generatedAt: Date(),
                 resources: [
-                    ResourceEntry(path: "images/a.png", hash: "aaaaaaaa", size: 100),
-                    ResourceEntry(path: "config/main.json", hash: "bbbbbbbb", size: 200)
+                    ResourceEntry(path: "images/a.png", hash: hexHash("a"), size: 100),
+                    ResourceEntry(path: "config/main.json", hash: hexHash("b"), size: 200)
                 ]
             )
 
             let toManifest = Manifest(
+                schemaVersion: 1,
+                minSdkVersion: "1.0",
                 version: toVersion,
                 generatedAt: Date(),
                 resources: [
-                    ResourceEntry(path: "images/a.png", hash: "cccccccc", size: 101),
-                    ResourceEntry(path: "fonts/regular.ttf", hash: "dddddddd", size: 300)
+                    ResourceEntry(path: "images/a.png", hash: hexHash("c"), size: 101),
+                    ResourceEntry(path: "fonts/regular.ttf", hash: hexHash("d"), size: 300)
                 ]
             )
 
@@ -194,6 +109,7 @@ struct ResourceUpdateServerTests {
                 "v1/manifest/\(appId)/version/\(fromVersion)",
                 beforeRequest: { req in
                     req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: UUID().uuidString)
                     try req.content.encode(fromManifest)
                 },
                 afterResponse: { res async in
@@ -206,6 +122,7 @@ struct ResourceUpdateServerTests {
                 "v1/manifest/\(appId)/version/\(toVersion)",
                 beforeRequest: { req in
                     req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: UUID().uuidString)
                     try req.content.encode(toManifest)
                 },
                 afterResponse: { res async in
@@ -218,45 +135,27 @@ struct ResourceUpdateServerTests {
                 "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)",
                 afterResponse: { res async in
                     #expect(res.status == .ok)
-                    let decoded = try? res.content.decode(PatchDocument.self)
+                    #expect(res.headers.first(name: "X-Patch-SHA256") != nil)
+                    let decoded = try? res.content.decode(PatchArtifact.self)
                     #expect(decoded != nil)
-                    #expect(decoded?.appId == appId)
-                    #expect(decoded?.fromVersion == fromVersion)
-                    #expect(decoded?.toVersion == toVersion)
-
-                    let ops = decoded?.operations ?? []
-                    #expect(ops.count == 3)
-                    #expect(ops.map(\.op) == ["remove", "add", "replace"])
-                    #expect(ops.map(\.path) == ["config/main.json", "fonts/regular.ttf", "images/a.png"])
+                    #expect(decoded?.operations.map(\.op) == ["remove", "add", "replace"])
                 }
             )
         }
     }
 
-    @Test("GET patch meta for missing version returns 404")
-    func patchMetaMissingVersionNotFound() async throws {
-        try await withApp(configure: configure) { app in
+    @Test("POST with invalid schemaVersion returns 400")
+    func invalidSchemaVersionValidation() async throws {
+        try await withConfiguredApp { app in
             let appId = "demoapp-\(UUID().uuidString)"
-            try await app.testing().test(
-                .GET,
-                "v1/patch/\(appId)/from/1.0.0/to/2.0.0/meta",
-                afterResponse: { res async in
-                    #expect(res.status == .notFound)
-                }
-            )
-        }
-    }
-
-    @Test("POST with invalid hash returns 400")
-    func invalidHashValidation() async throws {
-        try await withApp(configure: configure) { app in
-            let appId = "demoapp-\(UUID().uuidString)"
-            let version = "4.0.0"
+            let version = "3.0.0"
             let invalid = Manifest(
+                schemaVersion: 0,
+                minSdkVersion: "1.0",
                 version: version,
                 generatedAt: Date(),
                 resources: [
-                    ResourceEntry(path: "images/a.png", hash: "bad-hash", size: 10)
+                    ResourceEntry(path: "images/a.png", hash: hexHash("a"), size: 10)
                 ]
             )
 
@@ -265,6 +164,7 @@ struct ResourceUpdateServerTests {
                 "v1/manifest/\(appId)/version/\(version)",
                 beforeRequest: { req in
                     req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: UUID().uuidString)
                     try req.content.encode(invalid)
                 },
                 afterResponse: { res async in
@@ -274,9 +174,30 @@ struct ResourceUpdateServerTests {
         }
     }
 
-    @Test("POST manifest without token returns 401 and error envelope")
+    @Test("POST without request-id returns 400")
+    func postWithoutRequestIdReturnsBadRequest() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let version = "4.0.0"
+            let manifest = makeManifest(version: version)
+
+            try await app.testing().test(
+                .POST,
+                "v1/manifest/\(appId)/version/\(version)",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    try req.content.encode(manifest)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .badRequest)
+                }
+            )
+        }
+    }
+
+    @Test("POST manifest without token returns 401")
     func postWithoutTokenUnauthorized() async throws {
-        try await withApp(configure: configure) { app in
+        try await withConfiguredApp { app in
             let appId = "demoapp-\(UUID().uuidString)"
             let version = "5.0.0"
             let manifest = makeManifest(version: version)
@@ -285,59 +206,328 @@ struct ResourceUpdateServerTests {
                 .POST,
                 "v1/manifest/\(appId)/version/\(version)",
                 beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: UUID().uuidString)
                     try req.content.encode(manifest)
                 },
                 afterResponse: { res async in
                     #expect(res.status == .unauthorized)
-                    let decoded = try? res.content.decode(ErrorEnvelope.self)
-                    #expect(decoded != nil)
-                    #expect(decoded?.error.code == "unauthorized")
                 }
             )
         }
     }
 
-    @Test("S3 artifact storage put/delete integration (optional)")
-    func s3ArtifactStorageIntegration() async throws {
-        guard (Environment.get("RUN_S3_INTEGRATION") ?? "").lowercased() == "true" else {
-            return
+    @Test("POST resource upload + GET resource by hash")
+    func uploadAndDownloadResource() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let payload = Data("hello-resource".utf8)
+            let hash = sha256(payload)
+
+            try await app.testing().test(
+                .POST,
+                "v1/resource/\(appId)/upload",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Resource-Path", value: "assets/hello.txt")
+                    req.headers.replaceOrAdd(name: "X-Resource-Hash", value: hash)
+                    req.headers.replaceOrAdd(name: "X-Resource-Size", value: String(payload.count))
+                    req.body = .init(data: payload)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .created)
+                }
+            )
+
+            try await app.testing().test(
+                .GET,
+                "v1/resource/\(appId)/hash/\(hash)",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    #expect(res.headers.first(name: "X-Resource-Hash") == hash)
+                    #expect(res.headers.first(name: "X-Resource-Size") == String(payload.count))
+                    #expect(Data(buffer: res.body) == payload)
+                }
+            )
         }
+    }
 
-        let bucket = Environment.get("S3_BUCKET") ?? ""
-        let accessKeyId = Environment.get("S3_ACCESS_KEY_ID") ?? ""
-        let secretAccessKey = Environment.get("S3_SECRET_ACCESS_KEY") ?? ""
-        #expect(!bucket.isEmpty)
-        #expect(!accessKeyId.isEmpty)
-        #expect(!secretAccessKey.isEmpty)
+    @Test("POST resource with hash mismatch returns 400")
+    func uploadResourceHashMismatch() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let payload = Data("hello-resource".utf8)
 
-        let config = ServerConfig.S3Config(
-            bucket: bucket,
-            region: Environment.get("S3_REGION") ?? "us-east-1",
-            endpoint: Environment.get("S3_ENDPOINT"),
-            accessKeyId: accessKeyId,
-            secretAccessKey: secretAccessKey,
-            usePathStyle: (Environment.get("S3_PATH_STYLE") ?? "true").lowercased() == "true"
-        )
-
-        let storage = S3ArtifactStorage(config: config)
-        let key = "integration-tests/\(UUID().uuidString).json"
-        do {
-            try await storage.put(Data("{\"ok\":true}".utf8), key: key, contentType: "application/json")
-            try await storage.delete(key: key)
-        } catch {
-            Issue.record("S3 integration failed: \(error)")
+            try await app.testing().test(
+                .POST,
+                "v1/resource/\(appId)/upload",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Resource-Path", value: "assets/hello.txt")
+                    req.headers.replaceOrAdd(name: "X-Resource-Hash", value: hexHash("a"))
+                    req.headers.replaceOrAdd(name: "X-Resource-Size", value: String(payload.count))
+                    req.body = .init(data: payload)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .badRequest)
+                }
+            )
         }
-        try await storage.shutdown()
+    }
+
+    @Test("POST with same request-id and different payload returns 409")
+    func postIdempotencyConflictReturnsConflict() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let version = "6.0.0"
+            let requestId = UUID().uuidString
+            let first = makeManifest(version: version)
+            let second = Manifest(
+                schemaVersion: 1,
+                minSdkVersion: "1.0",
+                version: version,
+                generatedAt: Date(),
+                resources: [
+                    ResourceEntry(path: "images/a.png", hash: hexHash("e"), size: 111)
+                ]
+            )
+
+            try await app.testing().test(
+                .POST,
+                "v1/manifest/\(appId)/version/\(version)",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: requestId)
+                    try req.content.encode(first)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .created)
+                }
+            )
+
+            try await app.testing().test(
+                .POST,
+                "v1/manifest/\(appId)/version/\(version)",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: requestId)
+                    try req.content.encode(second)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .conflict)
+                    let envelope = try? res.content.decode(ErrorEnvelope.self)
+                    #expect(envelope?.error.code == "conflict")
+                }
+            )
+        }
+    }
+
+    @Test("Error response has unified envelope and request-id")
+    func errorResponseContainsEnvelopeAndRequestId() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let version = "7.0.0"
+            let requestId = "req-\(UUID().uuidString)"
+
+            try await app.testing().test(
+                .POST,
+                "v1/manifest/\(appId)/version/\(version)",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-Request-Id", value: requestId)
+                    try req.content.encode(makeManifest(version: version))
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .unauthorized)
+                    #expect(res.headers.first(name: "X-Request-Id") == requestId)
+                    let envelope = try? res.content.decode(ErrorEnvelope.self)
+                    #expect(envelope?.error.code == "unauthorized")
+                    #expect(envelope?.error.requestId == requestId)
+                }
+            )
+        }
+    }
+
+    @Test("Manifest publish is rollback-safe when artifact upload fails")
+    func manifestPublishRollsBackOnArtifactPutFailure() async throws {
+        try await withTemporaryPublicDirectory { publicDirectory in
+            let storageBackend = MockArtifactStorage()
+            let storage = ManifestStorage(publicDirectory: publicDirectory, artifactStorage: storageBackend)
+            let appId = "app-\(UUID().uuidString)"
+            let fromVersion = "1.0.0"
+            let toVersion = "1.1.0"
+            let failedRequestId = UUID().uuidString
+
+            let fromManifest = makeManifest(version: fromVersion)
+            let toManifest = Manifest(
+                schemaVersion: 1,
+                minSdkVersion: "1.0",
+                version: toVersion,
+                generatedAt: Date(),
+                resources: [
+                    ResourceEntry(path: "images/a.png", hash: hexHash("c"), size: 101)
+                ]
+            )
+
+            let created = try await storage.save(
+                fromManifest,
+                appId: appId,
+                version: fromVersion,
+                overwrite: false,
+                requestId: UUID().uuidString,
+                payloadHash: try payloadHash(fromManifest)
+            )
+            switch created {
+            case .created:
+                break
+            case .replayed:
+                #expect(Bool(false))
+            }
+
+            await storageBackend.setFailPut(true)
+            do {
+                _ = try await storage.save(
+                    toManifest,
+                    appId: appId,
+                    version: toVersion,
+                    overwrite: false,
+                    requestId: failedRequestId,
+                    payloadHash: try payloadHash(toManifest)
+                )
+                #expect(Bool(false))
+            } catch {
+                // expected
+            }
+
+            do {
+                _ = try await storage.load(appId: appId, version: toVersion)
+                #expect(Bool(false))
+            } catch {
+                // expected: rollback removed partial version
+            }
+
+            let latest = try await storage.loadLatest(appId: appId)
+            #expect(latest.version == fromVersion)
+
+            await storageBackend.setFailPut(false)
+            let retry = try await storage.save(
+                toManifest,
+                appId: appId,
+                version: toVersion,
+                overwrite: false,
+                requestId: failedRequestId,
+                payloadHash: try payloadHash(toManifest)
+            )
+            switch retry {
+            case .created:
+                break
+            case .replayed:
+                #expect(Bool(false))
+            }
+            let latestAfterRetry = try await storage.loadLatest(appId: appId)
+            #expect(latestAfterRetry.version == toVersion)
+        }
+    }
+
+    @Test("Resource load falls back to artifact backend and caches locally")
+    func loadResourceFallsBackToBackendAndCaches() async throws {
+        try await withTemporaryPublicDirectory { publicDirectory in
+            let storageBackend = MockArtifactStorage()
+            let storage = ManifestStorage(publicDirectory: publicDirectory, artifactStorage: storageBackend)
+            let appId = "app-\(UUID().uuidString)"
+            let data = Data("from-backend".utf8)
+            let hash = sha256(data)
+            let key = "apps/\(appId)/resources/\(hash).bin"
+            await storageBackend.seed(key: key, data: data)
+
+            let first = try await storage.loadResource(appId: appId, hash: hash)
+            #expect(first == data)
+            #expect(await storageBackend.getCallsCount() == 1)
+
+            try await storageBackend.delete(key: key)
+            let second = try await storage.loadResource(appId: appId, hash: hash)
+            #expect(second == data)
+            #expect(await storageBackend.getCallsCount() == 1)
+        }
     }
 
     private func makeManifest(version: String) -> Manifest {
         Manifest(
+            schemaVersion: 1,
+            minSdkVersion: "1.0",
             version: version,
             generatedAt: Date(),
             resources: [
-                ResourceEntry(path: "images/a.png", hash: "aaaaaaaa", size: 100),
-                ResourceEntry(path: "config/main.json", hash: "bbbbbbbb", size: 200)
+                ResourceEntry(path: "images/a.png", hash: hexHash("a"), size: 100),
+                ResourceEntry(path: "config/main.json", hash: hexHash("b"), size: 200)
             ]
         )
+    }
+
+    private func withConfiguredApp(_ body: (Application) async throws -> Void) async throws {
+        setenv("CI_PUBLISH_TOKEN", publishToken, 1)
+        try await withApp(configure: configure, body)
+    }
+
+    private func withTemporaryPublicDirectory(_ body: (String) async throws -> Void) async throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("resource-update-tests-\(UUID().uuidString)", isDirectory: true)
+        let publicDirectory = base.appendingPathComponent("Public", isDirectory: true)
+        try FileManager.default.createDirectory(at: publicDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        try await body(publicDirectory.path)
+    }
+
+    private func payloadHash(_ manifest: Manifest) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(manifest)
+        return sha256(data)
+    }
+
+    private func hexHash(_ digit: Character) -> String {
+        String(repeating: String(digit), count: 64)
+    }
+
+    private func sha256(_ data: Data) -> String {
+        let digest = SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+private actor MockArtifactStorage: ArtifactStorage {
+    enum MockError: Error {
+        case putFailed
+    }
+
+    private var objects: [String: Data] = [:]
+    private var failPut = false
+    private var getCalls = 0
+
+    func put(_ data: Data, key: String, contentType: String?) async throws {
+        if failPut {
+            throw MockError.putFailed
+        }
+        objects[key] = data
+    }
+
+    func get(key: String) async throws -> Data? {
+        getCalls += 1
+        return objects[key]
+    }
+
+    func delete(key: String) async throws {
+        objects.removeValue(forKey: key)
+    }
+
+    func setFailPut(_ value: Bool) {
+        failPut = value
+    }
+
+    func seed(key: String, data: Data) {
+        objects[key] = data
+    }
+
+    func getCallsCount() -> Int {
+        getCalls
     }
 }

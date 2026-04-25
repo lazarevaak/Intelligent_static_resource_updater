@@ -1,6 +1,7 @@
 import Vapor
 
-struct PatchDocument: Content {
+struct PatchArtifact: Content {
+    let schemaVersion: Int
     let appId: String
     let fromVersion: String
     let toVersion: String

@@ -8,6 +8,8 @@
 import Vapor
 
 struct Manifest: Content {
+    let schemaVersion: Int
+    let minSdkVersion: String
     let version: String
     let generatedAt: Date
     let resources: [ResourceEntry]

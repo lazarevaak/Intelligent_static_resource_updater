@@ -1,6 +1,29 @@
 import Foundation
 import Vapor
 
+private enum RequestIDStorageKey: StorageKey {
+    typealias Value = String
+}
+
+extension Request {
+    var requestID: String {
+        get { storage[RequestIDStorageKey.self] ?? UUID().uuidString }
+        set { storage[RequestIDStorageKey.self] = newValue }
+    }
+}
+
+struct RequestIDMiddleware: AsyncMiddleware {
+    func respond(to request: Request, chainingTo next: any AsyncResponder) async throws -> Response {
+        let headerValue = request.headers.first(name: "X-Request-Id")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requestID = (headerValue?.isEmpty == false) ? headerValue! : UUID().uuidString
+        request.requestID = requestID
+        request.logger[metadataKey: "request-id"] = .string(requestID)
+        let response = try await next.respond(to: request)
+        response.headers.replaceOrAdd(name: "X-Request-Id", value: requestID)
+        return response
+    }
+}
+
 struct APIErrorMiddleware: AsyncMiddleware {
     func respond(to request: Request, chainingTo next: any AsyncResponder) async throws -> Response {
         do {
@@ -24,7 +47,7 @@ struct APIErrorMiddleware: AsyncMiddleware {
     }
 
     private func makeErrorResponse(request: Request, status: HTTPStatus, reason: String, code: String) -> Response {
-        let requestId = requestId(from: request)
+        let requestId = request.requestID
         request.logger.error(
             "request_failed",
             metadata: [
@@ -45,6 +68,7 @@ struct APIErrorMiddleware: AsyncMiddleware {
             )
         )
         let response = Response(status: status)
+        response.headers.replaceOrAdd(name: "X-Request-Id", value: requestId)
         do {
             try response.content.encode(envelope)
         } catch {
@@ -65,10 +89,6 @@ struct APIErrorMiddleware: AsyncMiddleware {
         default: return "http_\(status.code)"
         }
     }
-
-    private func requestId(from request: Request) -> String {
-        request.headers.first(name: "X-Request-Id") ?? UUID().uuidString
-    }
 }
 
 struct RequestLoggingMiddleware: AsyncMiddleware {
@@ -77,7 +97,7 @@ struct RequestLoggingMiddleware: AsyncMiddleware {
         let response = try await next.respond(to: request)
         let end = DispatchTime.now().uptimeNanoseconds
         let durationMs = Double(end - start) / 1_000_000
-        let requestId = request.headers.first(name: "X-Request-Id") ?? UUID().uuidString
+        let requestId = request.requestID
 
         request.logger.info(
             "request_completed",
@@ -87,8 +107,9 @@ struct RequestLoggingMiddleware: AsyncMiddleware {
                 "path": .string(request.url.path),
                 "status": .stringConvertible(response.status.code),
                 "duration_ms": .string(String(format: "%.2f", durationMs))
-            ]
+                ]
         )
+        response.headers.replaceOrAdd(name: "X-Request-Id", value: requestId)
         return response
     }
 }
