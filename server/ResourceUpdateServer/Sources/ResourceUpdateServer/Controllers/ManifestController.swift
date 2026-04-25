@@ -7,29 +7,188 @@ struct ManifestController {
         let size: Int
     }
 
+    private struct PatchUploadResponse: Content {
+        let hash: String
+        let size: Int
+    }
+
+    private struct UpdatesQuery: Content {
+        let fromVersion: String?
+        let sdkVersion: String?
+    }
+
     private let storage: ManifestStorage
     private let publishToken: String
+    private let signatureService: SignatureService
 
-    init(publicDirectory: String, artifactStorage: any ArtifactStorage, publishToken: String) {
+    init(
+        publicDirectory: String,
+        artifactStorage: any ArtifactStorage,
+        publishToken: String,
+        signatureService: SignatureService
+    ) {
         self.storage = ManifestStorage(
             publicDirectory: publicDirectory,
             artifactStorage: artifactStorage
         )
         self.publishToken = publishToken
+        self.signatureService = signatureService
     }
 
-    func getLatestManifest(req: Request) async throws -> Manifest {
+    func getLatestManifest(req: Request) async throws -> Response {
         let appId = try requireParam(req, "appId")
         try validateIdentifier(appId, name: "appId")
-        return try await storage.loadLatest(appId: appId)
+        let manifest = try await storage.loadLatest(appId: appId)
+        return try makeSignedManifestResponse(manifest)
     }
 
-    func getManifest(req: Request) async throws -> Manifest {
+    func getManifest(req: Request) async throws -> Response {
         let appId = try requireParam(req, "appId")
         let version = try requireParam(req, "version")
         try validateIdentifier(appId, name: "appId")
         try validateIdentifier(version, name: "version")
-        return try await storage.load(appId: appId, version: version)
+        let manifest = try await storage.load(appId: appId, version: version)
+        return try makeSignedManifestResponse(manifest)
+    }
+
+    func getUpdates(req: Request) async throws -> Response {
+        let appId = try requireParam(req, "appId")
+        try validateIdentifier(appId, name: "appId")
+
+        let query = try req.query.decode(UpdatesQuery.self)
+        if let fromVersion = query.fromVersion {
+            try validateIdentifier(fromVersion, name: "fromVersion")
+        }
+        if let sdkVersion = query.sdkVersion {
+            try validateVersionString(sdkVersion, name: "sdkVersion")
+        }
+
+        let latest = try await storage.loadLatest(appId: appId)
+        let signedManifest = try signatureService.sign(latest)
+        let manifestDescriptor = SignedObjectDescriptor(
+            url: "/v1/manifest/\(appId)/version/\(latest.version)",
+            sha256: signedManifest.sha256,
+            signature: signedManifest.signatureBase64,
+            signatureAlgorithm: signedManifest.algorithm,
+            signatureKeyId: signedManifest.keyId,
+            size: signedManifest.data.count
+        )
+
+        if query.fromVersion == latest.version {
+            return try makeSignedUpdatesResponse(
+                UpdatesResponse(
+                decision: "no-update",
+                appId: appId,
+                fromVersion: query.fromVersion,
+                latestVersion: latest.version,
+                sdkVersion: query.sdkVersion,
+                reason: "already-up-to-date",
+                manifest: manifestDescriptor,
+                patch: nil
+                )
+            )
+        }
+
+        guard let fromVersion = query.fromVersion else {
+            return try makeSignedUpdatesResponse(
+                UpdatesResponse(
+                decision: "manifest-only",
+                appId: appId,
+                fromVersion: nil,
+                latestVersion: latest.version,
+                sdkVersion: query.sdkVersion,
+                reason: "from-version-missing",
+                manifest: manifestDescriptor,
+                patch: nil
+                )
+            )
+        }
+
+        guard let sdkVersion = query.sdkVersion else {
+            return try makeSignedUpdatesResponse(
+                UpdatesResponse(
+                decision: "manifest-only",
+                appId: appId,
+                fromVersion: fromVersion,
+                latestVersion: latest.version,
+                sdkVersion: nil,
+                reason: "sdk-version-missing",
+                manifest: manifestDescriptor,
+                patch: nil
+                )
+            )
+        }
+
+        if compareVersions(sdkVersion, latest.minSdkVersion) == .orderedAscending {
+            return try makeSignedUpdatesResponse(
+                UpdatesResponse(
+                decision: "manifest-only",
+                appId: appId,
+                fromVersion: fromVersion,
+                latestVersion: latest.version,
+                sdkVersion: sdkVersion,
+                reason: "sdk-too-old",
+                manifest: manifestDescriptor,
+                patch: nil
+                )
+            )
+        }
+
+        do {
+            let patch = try await storage.loadPatchArtifact(
+                appId: appId,
+                fromVersion: fromVersion,
+                toVersion: latest.version
+            )
+            let patchSignature = try signatureService.sign(patch.data)
+            let patchDescriptor = SignedObjectDescriptor(
+                url: "/v1/patch/\(appId)/from/\(fromVersion)/to/\(latest.version)",
+                sha256: patch.sha256,
+                signature: patchSignature.signatureBase64,
+                signatureAlgorithm: patchSignature.algorithm,
+                signatureKeyId: patchSignature.keyId,
+                size: patch.data.count
+            )
+            return try makeSignedUpdatesResponse(
+                UpdatesResponse(
+                decision: "patch",
+                appId: appId,
+                fromVersion: fromVersion,
+                latestVersion: latest.version,
+                sdkVersion: sdkVersion,
+                reason: "patch-available",
+                manifest: manifestDescriptor,
+                patch: patchDescriptor
+                )
+            )
+        } catch {
+            return try makeSignedUpdatesResponse(
+                UpdatesResponse(
+                decision: "manifest-only",
+                appId: appId,
+                fromVersion: fromVersion,
+                latestVersion: latest.version,
+                sdkVersion: sdkVersion,
+                reason: "patch-unavailable",
+                manifest: manifestDescriptor,
+                patch: nil
+                )
+            )
+        }
+    }
+
+    func getSigningKeys(req: Request) throws -> [SigningPublicKey] {
+        _ = req
+        return signatureService.publicKeys()
+    }
+
+    func getSigningKey(req: Request) throws -> SigningPublicKey {
+        let keyId = try requireParam(req, "keyId")
+        try validateIdentifier(keyId, name: "keyId")
+        guard let key = signatureService.publicKey(keyId: keyId) else {
+            throw Abort(.notFound, reason: "signing key not found")
+        }
+        return key
     }
 
     func updateManifest(req: Request) async throws -> HTTPStatus {
@@ -93,6 +252,7 @@ struct ManifestController {
             toVersion: toVersion
         )
 
+        let signature = try signatureService.sign(artifact.data)
         let response = Response(status: .ok, body: .init(data: artifact.data))
         response.headers.replaceOrAdd(name: .contentType, value: "application/json")
         response.headers.replaceOrAdd(
@@ -100,6 +260,9 @@ struct ManifestController {
             value: "attachment; filename=\"\(fromVersion)-\(toVersion).patch.json\""
         )
         response.headers.replaceOrAdd(name: "X-Patch-SHA256", value: artifact.sha256)
+        response.headers.replaceOrAdd(name: "X-Signature", value: signature.signatureBase64)
+        response.headers.replaceOrAdd(name: "X-Signature-Alg", value: signature.algorithm)
+        response.headers.replaceOrAdd(name: "X-Signature-Key-Id", value: signature.keyId)
         return response
     }
 
@@ -136,6 +299,56 @@ struct ManifestController {
         let status: HTTPStatus = result.created ? .created : .ok
         let response = Response(status: status)
         try response.content.encode(ResourceUploadResponse(hash: result.hash, size: result.size))
+        return response
+    }
+
+    func uploadPatch(req: Request) async throws -> Response {
+        try authorizePublish(req: req)
+
+        let appId = try requireParam(req, "appId")
+        let fromVersion = try requireParam(req, "fromVersion")
+        let toVersion = try requireParam(req, "toVersion")
+        let requestId = try requireRequestId(req)
+        try validateIdentifier(appId, name: "appId")
+        try validateIdentifier(fromVersion, name: "fromVersion")
+        try validateIdentifier(toVersion, name: "toVersion")
+
+        let hash = try requireHeader(req, "X-Patch-SHA256")
+        try validateHash(hash)
+
+        let expectedSize = try parseOptionalNonNegativeInt(
+            req.headers.first(name: "X-Patch-Size"),
+            name: "X-Patch-Size"
+        )
+
+        guard let bodyBuffer = req.body.data else {
+            throw Abort(.badRequest, reason: "patch body is empty")
+        }
+        let data = Data(buffer: bodyBuffer)
+        if data.isEmpty {
+            throw Abort(.badRequest, reason: "patch body is empty")
+        }
+
+        let result = try await storage.uploadPatchArtifact(
+            appId: appId,
+            fromVersion: fromVersion,
+            toVersion: toVersion,
+            requestId: requestId,
+            payloadHash: hash.lowercased(),
+            expectedHash: hash.lowercased(),
+            expectedSize: expectedSize,
+            data: data
+        )
+
+        let status: HTTPStatus
+        switch result {
+        case .created:
+            status = .created
+        case .replayed:
+            status = .ok
+        }
+        let response = Response(status: status)
+        try response.content.encode(PatchUploadResponse(hash: hash.lowercased(), size: data.count))
         return response
     }
 
@@ -249,6 +462,41 @@ struct ManifestController {
         let data = try encoder.encode(manifest)
         let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func makeSignedManifestResponse(_ manifest: Manifest) throws -> Response {
+        let signature = try signatureService.sign(manifest)
+        let response = Response(status: .ok, body: .init(data: signature.data))
+        response.headers.replaceOrAdd(name: .contentType, value: "application/json")
+        response.headers.replaceOrAdd(name: "X-Manifest-SHA256", value: signature.sha256)
+        response.headers.replaceOrAdd(name: "X-Signature", value: signature.signatureBase64)
+        response.headers.replaceOrAdd(name: "X-Signature-Alg", value: signature.algorithm)
+        response.headers.replaceOrAdd(name: "X-Signature-Key-Id", value: signature.keyId)
+        return response
+    }
+
+    private func makeSignedUpdatesResponse(_ payload: UpdatesResponse) throws -> Response {
+        let signature = try signatureService.sign(payload)
+        let response = Response(status: .ok, body: .init(data: signature.data))
+        response.headers.replaceOrAdd(name: .contentType, value: "application/json")
+        response.headers.replaceOrAdd(name: "X-Updates-SHA256", value: signature.sha256)
+        response.headers.replaceOrAdd(name: "X-Updates-Signature", value: signature.signatureBase64)
+        response.headers.replaceOrAdd(name: "X-Updates-Signature-Alg", value: signature.algorithm)
+        response.headers.replaceOrAdd(name: "X-Updates-Signature-Key-Id", value: signature.keyId)
+        return response
+    }
+
+    private func compareVersions(_ lhs: String, _ rhs: String) -> ComparisonResult {
+        let lhsParts = lhs.split(separator: ".").map { Int($0) ?? 0 }
+        let rhsParts = rhs.split(separator: ".").map { Int($0) ?? 0 }
+        let maxCount = max(lhsParts.count, rhsParts.count)
+        for index in 0..<maxCount {
+            let l = index < lhsParts.count ? lhsParts[index] : 0
+            let r = index < rhsParts.count ? rhsParts[index] : 0
+            if l < r { return .orderedAscending }
+            if l > r { return .orderedDescending }
+        }
+        return .orderedSame
     }
 
     private func requireParam(_ req: Request, _ name: String) throws -> String {

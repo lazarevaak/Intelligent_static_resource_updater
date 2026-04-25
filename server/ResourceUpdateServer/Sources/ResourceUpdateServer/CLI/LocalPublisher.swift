@@ -10,6 +10,7 @@ struct ResourceUpdateCLI: AsyncParsableCommand {
             PublishLocalCommand.self,
             DryRunCommand.self,
             ValidateCommand.self,
+            CleanupCommand.self,
         ]
     )
 }
@@ -164,6 +165,50 @@ struct ValidateCommand: ParsableCommand {
         print("status: ok")
         print("resources_dir: \(resourcesDirURL.path)")
         print("resources_total: \(resources.count)")
+    }
+}
+
+struct CleanupCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "cleanup",
+        abstract: "Remove old manifests/patches/resources and keep only latest N versions."
+    )
+
+    @Option(name: .customLong("app-id"), help: "Application identifier.")
+    var appId: String
+
+    @Option(name: .customLong("keep-last"), help: "How many latest versions to keep. Must be >= 1.")
+    var keepLast: Int = 3
+
+    @Option(name: .customLong("public-dir"), help: "Public directory path (contains manifests/ and artifacts/).")
+    var publicDir: String = "./Public"
+
+    mutating func run() async throws {
+        let trimmedAppId = appId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedAppId.isEmpty {
+            throw ValidationError("--app-id must not be empty")
+        }
+        if keepLast < 1 {
+            throw ValidationError("--keep-last must be >= 1")
+        }
+
+        let publicURL = URL(fileURLWithPath: publicDir, isDirectory: true).standardizedFileURL
+        let storage = ManifestStorage(
+            publicDirectory: publicURL.path,
+            artifactStorage: LocalArtifactStorage(publicDirectory: publicURL.path)
+        )
+
+        let result = try await storage.cleanup(appId: trimmedAppId, keepLast: keepLast)
+        print("cleanup completed")
+        print("appId: \(trimmedAppId)")
+        print("public_dir: \(publicURL.path)")
+        print("keep_last: \(keepLast)")
+        print("removed_versions: \(result.removedVersions.count)")
+        if !result.removedVersions.isEmpty {
+            print("removed_versions_list: \(result.removedVersions.joined(separator: ","))")
+        }
+        print("removed_patch_artifacts: \(result.removedPatchArtifacts)")
+        print("removed_resource_binaries: \(result.removedResourceBinaries)")
     }
 }
 

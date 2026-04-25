@@ -5,6 +5,7 @@ struct ServerConfig {
     let publishToken: String
     let artifactBackend: ArtifactBackend
     let s3: S3Config?
+    let signing: SigningConfig
 
     enum ArtifactBackend: String {
         case local
@@ -18,6 +19,17 @@ struct ServerConfig {
         let accessKeyId: String
         let secretAccessKey: String
         let usePathStyle: Bool
+    }
+
+    struct SigningConfig {
+        struct Key: Decodable {
+            let keyId: String
+            let privateKeyBase64: String
+            let createdAt: Date
+        }
+
+        let activeKeyId: String
+        let keys: [Key]
     }
 
     static func fromEnvironment() throws -> ServerConfig {
@@ -47,10 +59,55 @@ struct ServerConfig {
         } else {
             s3Config = nil
         }
+        let signingConfig = try makeSigningConfig()
         return ServerConfig(
             publishToken: token,
             artifactBackend: backend,
-            s3: s3Config
+            s3: s3Config,
+            signing: signingConfig
         )
+    }
+
+    private static func makeSigningConfig() throws -> SigningConfig {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        if let keysJSON = Environment.get("SIGNING_KEYS_JSON")?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !keysJSON.isEmpty {
+            let data = Data(keysJSON.utf8)
+            let keys = try decoder.decode([SigningConfig.Key].self, from: data)
+            if keys.isEmpty {
+                throw Abort(.internalServerError, reason: "SIGNING_KEYS_JSON must contain at least one key")
+            }
+            let keyIds = Set(keys.map(\.keyId))
+            if keyIds.count != keys.count {
+                throw Abort(.internalServerError, reason: "SIGNING_KEYS_JSON contains duplicate keyId")
+            }
+
+            guard let activeKeyId = Environment.get("SIGNING_ACTIVE_KEY_ID")?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !activeKeyId.isEmpty
+            else {
+                throw Abort(.internalServerError, reason: "SIGNING_ACTIVE_KEY_ID is required when SIGNING_KEYS_JSON is set")
+            }
+            guard keyIds.contains(activeKeyId) else {
+                throw Abort(.internalServerError, reason: "SIGNING_ACTIVE_KEY_ID must reference existing keyId in SIGNING_KEYS_JSON")
+            }
+            return SigningConfig(activeKeyId: activeKeyId, keys: keys)
+        }
+
+        // Backward-compatible single-key mode.
+        guard let signingPrivateKey = Environment.get("SIGNING_PRIVATE_KEY_BASE64")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !signingPrivateKey.isEmpty
+        else {
+            throw Abort(.internalServerError, reason: "SIGNING_KEYS_JSON (preferred) or SIGNING_PRIVATE_KEY_BASE64 is required")
+        }
+        let signingKeyId = Environment.get("SIGNING_KEY_ID")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let keyId = signingKeyId?.isEmpty == false ? signingKeyId! : "main"
+        let singleKey = SigningConfig.Key(
+            keyId: keyId,
+            privateKeyBase64: signingPrivateKey,
+            createdAt: Date(timeIntervalSince1970: 0)
+        )
+        return SigningConfig(activeKeyId: keyId, keys: [singleKey])
     }
 }

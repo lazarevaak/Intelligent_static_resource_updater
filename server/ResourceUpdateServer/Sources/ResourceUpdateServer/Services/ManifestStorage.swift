@@ -8,6 +8,17 @@ actor ManifestStorage {
         case replayed
     }
 
+    enum PatchUploadResult {
+        case created
+        case replayed
+    }
+
+    struct CleanupResult {
+        let removedVersions: [String]
+        let removedPatchArtifacts: Int
+        let removedResourceBinaries: Int
+    }
+
     private struct IdempotencyRecord: Codable {
         let requestId: String
         let payloadHash: String
@@ -59,6 +70,7 @@ actor ManifestStorage {
 
         let idempotency = try validateIdempotency(
             appId: appId,
+            scope: .manifestPublish,
             requestId: requestId,
             payloadHash: payloadHash
         )
@@ -123,6 +135,7 @@ actor ManifestStorage {
             latestWasUpdated = true
             try saveIdempotencyRecord(
                 appId: appId,
+                scope: .manifestPublish,
                 requestId: requestId,
                 payloadHash: payloadHash,
                 statusCode: Int(HTTPStatus.created.code)
@@ -193,6 +206,15 @@ actor ManifestStorage {
             return (data, sha256(data))
         }
 
+        let key = patchArtifactKey(appId: appId, fromVersion: fromVersion, toVersion: toVersion)
+        if let data = try await artifactStorage.get(key: key) {
+            try ensureDirectoryExists(at: patchDirectoryURL(appId: appId))
+            let pending = pendingPatchArtifactURL(appId: appId, fromVersion: fromVersion, toVersion: toVersion)
+            try data.write(to: pending, options: .atomic)
+            try moveReplacing(source: pending, destination: url)
+            return (data, sha256(data))
+        }
+
         let fromManifest = try load(appId: appId, version: fromVersion)
         let toManifest = try load(appId: appId, version: toVersion)
         let artifact = try await buildPatchArtifact(
@@ -205,6 +227,62 @@ actor ManifestStorage {
         let data = try Self.makeEncoder().encode(artifact)
         try data.write(to: url, options: Data.WritingOptions.atomic)
         return (data, sha256(data))
+    }
+
+    func uploadPatchArtifact(
+        appId: String,
+        fromVersion: String,
+        toVersion: String,
+        requestId: String,
+        payloadHash: String,
+        expectedHash: String,
+        expectedSize: Int?,
+        data: Data
+    ) async throws -> PatchUploadResult {
+        _ = try load(appId: appId, version: fromVersion)
+        _ = try load(appId: appId, version: toVersion)
+
+        if let expectedSize, expectedSize != data.count {
+            throw Abort(.badRequest, reason: "patch size mismatch")
+        }
+        let actualHash = sha256(data)
+        if actualHash != expectedHash || payloadHash != actualHash {
+            throw Abort(.badRequest, reason: "patch hash mismatch")
+        }
+
+        try ensureDirectoryExists(at: patchDirectoryURL(appId: appId))
+        try ensureDirectoryExists(at: idempotencyDirectoryURL(appId: appId))
+
+        let idempotency = try validateIdempotency(
+            appId: appId,
+            scope: .patchUpload,
+            requestId: requestId,
+            payloadHash: payloadHash
+        )
+        if idempotency == .replayed {
+            return .replayed
+        }
+
+        let destination = patchArtifactURL(appId: appId, fromVersion: fromVersion, toVersion: toVersion)
+        let pending = pendingPatchArtifactURL(appId: appId, fromVersion: fromVersion, toVersion: toVersion)
+        let key = patchArtifactKey(appId: appId, fromVersion: fromVersion, toVersion: toVersion)
+
+        do {
+            try data.write(to: pending, options: .atomic)
+            try await artifactStorage.put(data, key: key, contentType: "application/json")
+            try moveReplacing(source: pending, destination: destination)
+            try saveIdempotencyRecord(
+                appId: appId,
+                scope: .patchUpload,
+                requestId: requestId,
+                payloadHash: payloadHash,
+                statusCode: Int(HTTPStatus.created.code)
+            )
+            return .created
+        } catch {
+            try? FileManager.default.removeItem(at: pending)
+            throw error
+        }
     }
 
     func uploadResource(
@@ -266,13 +344,73 @@ actor ManifestStorage {
         throw Abort(.notFound, reason: "resource not found")
     }
 
+    func cleanup(appId: String, keepLast: Int) async throws -> CleanupResult {
+        if keepLast < 1 {
+            throw Abort(.badRequest, reason: "keepLast must be >= 1")
+        }
+
+        let versions = try listVersions(appId: appId)
+        guard versions.count > keepLast else {
+            return CleanupResult(removedVersions: [], removedPatchArtifacts: 0, removedResourceBinaries: 0)
+        }
+
+        var manifestsByVersion: [String: Manifest] = [:]
+        for version in versions {
+            manifestsByVersion[version] = try load(appId: appId, version: version)
+        }
+
+        let latest = try? latestVersion(appId: appId)
+        let sortedByFreshness = manifestsByVersion.values.sorted {
+            if $0.generatedAt == $1.generatedAt {
+                return $0.version > $1.version
+            }
+            return $0.generatedAt > $1.generatedAt
+        }
+
+        var keep = Set(sortedByFreshness.prefix(keepLast).map(\.version))
+        if let latest {
+            keep.insert(latest)
+        }
+
+        let removedVersions = versions.filter { !keep.contains($0) }
+        for version in removedVersions {
+            let fileURL = manifestURL(appId: appId, version: version)
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+            }
+        }
+
+        let removedPatchArtifacts = try await cleanupPatchArtifacts(appId: appId, removedVersions: Set(removedVersions))
+        let removedResourceBinaries = try await cleanupResourceBinaries(
+            appId: appId,
+            keepVersions: keep,
+            manifestsByVersion: manifestsByVersion
+        )
+
+        return CleanupResult(
+            removedVersions: removedVersions,
+            removedPatchArtifacts: removedPatchArtifacts,
+            removedResourceBinaries: removedResourceBinaries
+        )
+    }
+
     private enum IdempotencyValidationResult {
         case fresh
         case replayed
     }
 
-    private func validateIdempotency(appId: String, requestId: String, payloadHash: String) throws -> IdempotencyValidationResult {
-        let key = sanitizedRequestId(requestId)
+    private enum IdempotencyScope: String {
+        case manifestPublish = "manifest"
+        case patchUpload = "patch-upload"
+    }
+
+    private func validateIdempotency(
+        appId: String,
+        scope: IdempotencyScope,
+        requestId: String,
+        payloadHash: String
+    ) throws -> IdempotencyValidationResult {
+        let key = idempotencyRecordKey(scope: scope, requestId: requestId)
         let recordURL = idempotencyDirectoryURL(appId: appId).appendingPathComponent("\(key).json")
         guard FileManager.default.fileExists(atPath: recordURL.path) else {
             return .fresh
@@ -285,8 +423,14 @@ actor ManifestStorage {
         return .replayed
     }
 
-    private func saveIdempotencyRecord(appId: String, requestId: String, payloadHash: String, statusCode: Int) throws {
-        let key = sanitizedRequestId(requestId)
+    private func saveIdempotencyRecord(
+        appId: String,
+        scope: IdempotencyScope,
+        requestId: String,
+        payloadHash: String,
+        statusCode: Int
+    ) throws {
+        let key = idempotencyRecordKey(scope: scope, requestId: requestId)
         let recordURL = idempotencyDirectoryURL(appId: appId).appendingPathComponent("\(key).json")
         let record = IdempotencyRecord(
             requestId: requestId,
@@ -454,6 +598,10 @@ actor ManifestStorage {
         requestId.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "..", with: "_")
     }
 
+    private func idempotencyRecordKey(scope: IdempotencyScope, requestId: String) -> String {
+        "\(scope.rawValue)-\(sanitizedRequestId(requestId))"
+    }
+
     private func latestVersion(appId: String) throws -> String {
         let pointerURL = latestPointerURL(appId: appId)
         guard FileManager.default.fileExists(atPath: pointerURL.path) else {
@@ -502,6 +650,10 @@ actor ManifestStorage {
         patchDirectoryURL(appId: appId).appendingPathComponent("\(fromVersion)-\(toVersion).patch.json.pending")
     }
 
+    private func patchArtifactKey(appId: String, fromVersion: String, toVersion: String) -> String {
+        "apps/\(appId)/patches/\(fromVersion)-\(toVersion).patch.json"
+    }
+
     private func idempotencyDirectoryURL(appId: String) -> URL {
         baseDirectoryURL.appendingPathComponent(appId, isDirectory: true).appendingPathComponent("idempotency", isDirectory: true)
     }
@@ -525,6 +677,64 @@ actor ManifestStorage {
 
     private func ensureDirectoryExists(at url: URL) throws {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
+    }
+
+    private func cleanupPatchArtifacts(appId: String, removedVersions: Set<String>) async throws -> Int {
+        let patchesDirectory = patchDirectoryURL(appId: appId)
+        guard FileManager.default.fileExists(atPath: patchesDirectory.path) else {
+            return 0
+        }
+        let files = try FileManager.default.contentsOfDirectory(at: patchesDirectory, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasSuffix(".patch.json") }
+
+        var removed = 0
+        for file in files {
+            let name = file.lastPathComponent.replacingOccurrences(of: ".patch.json", with: "")
+            let components = name.split(separator: "-", maxSplits: 1).map(String.init)
+            guard components.count == 2 else { continue }
+            let fromVersion = components[0]
+            let toVersion = components[1]
+            guard removedVersions.contains(fromVersion) || removedVersions.contains(toVersion) else {
+                continue
+            }
+            if FileManager.default.fileExists(atPath: file.path) {
+                try FileManager.default.removeItem(at: file)
+            }
+            try? await artifactStorage.delete(key: patchArtifactKey(appId: appId, fromVersion: fromVersion, toVersion: toVersion))
+            removed += 1
+        }
+
+        return removed
+    }
+
+    private func cleanupResourceBinaries(
+        appId: String,
+        keepVersions: Set<String>,
+        manifestsByVersion: [String: Manifest]
+    ) async throws -> Int {
+        let resourceDirectory = resourceDirectoryURL(appId: appId)
+        guard FileManager.default.fileExists(atPath: resourceDirectory.path) else {
+            return 0
+        }
+
+        let keepHashes = Set(
+            keepVersions
+                .compactMap { manifestsByVersion[$0] }
+                .flatMap { $0.resources.map(\.hash) }
+        )
+
+        let files = try FileManager.default.contentsOfDirectory(at: resourceDirectory, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "bin" }
+
+        var removed = 0
+        for file in files {
+            let hash = file.deletingPathExtension().lastPathComponent
+            guard !keepHashes.contains(hash) else { continue }
+            try FileManager.default.removeItem(at: file)
+            try? await artifactStorage.delete(key: "apps/\(appId)/resources/\(hash).bin")
+            removed += 1
+        }
+        return removed
     }
 
     private func moveReplacing(source: URL, destination: URL) throws {
