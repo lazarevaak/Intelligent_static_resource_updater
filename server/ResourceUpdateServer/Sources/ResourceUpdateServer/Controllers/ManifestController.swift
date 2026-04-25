@@ -10,9 +10,14 @@ import Vapor
 struct ManifestController {
 
     private let storage: ManifestStorage
+    private let publishToken: String
 
-    init(publicDirectory: String) {
-        self.storage = ManifestStorage(publicDirectory: publicDirectory)
+    init(publicDirectory: String, artifactStorage: any ArtifactStorage, publishToken: String) {
+        self.storage = ManifestStorage(
+            publicDirectory: publicDirectory,
+            artifactStorage: artifactStorage
+        )
+        self.publishToken = publishToken
     }
 
     func getLatestManifest(req: Request) async throws -> Manifest {
@@ -36,6 +41,8 @@ struct ManifestController {
     }
 
     func updateManifest(req: Request) async throws -> HTTPStatus {
+        try authorizePublish(req: req)
+
         let appId = try requireParam(req, "appId")
         let version = try requireParam(req, "version")
         try validateIdentifier(appId, name: "appId")
@@ -46,7 +53,7 @@ struct ManifestController {
         if manifest.version != version {
             throw Abort(.badRequest, reason: "manifest.version must match URL version")
         }
-        try await storage.save(manifest, appId: appId, version: version, overwrite: false)
+        try await storage.publishManifest(manifest, appId: appId, version: version, overwrite: false)
         return .created
     }
 
@@ -59,6 +66,21 @@ struct ManifestController {
         try validateIdentifier(toVersion, name: "toVersion")
 
         return try await storage.buildPatchMeta(
+            appId: appId,
+            fromVersion: fromVersion,
+            toVersion: toVersion
+        )
+    }
+
+    func getPatch(req: Request) async throws -> PatchDocument {
+        let appId = try requireParam(req, "appId")
+        let fromVersion = try requireParam(req, "fromVersion")
+        let toVersion = try requireParam(req, "toVersion")
+        try validateIdentifier(appId, name: "appId")
+        try validateIdentifier(fromVersion, name: "fromVersion")
+        try validateIdentifier(toVersion, name: "toVersion")
+
+        return try await storage.buildPatchDocument(
             appId: appId,
             fromVersion: fromVersion,
             toVersion: toVersion
@@ -117,6 +139,15 @@ struct ManifestController {
         }
         if trimmed.unicodeScalars.contains(where: { !allowed.contains($0) }) {
             throw Abort(.badRequest, reason: "resource.hash contains invalid characters")
+        }
+    }
+
+    private func authorizePublish(req: Request) throws {
+        let bearer = req.headers.bearerAuthorization?.token
+        let headerToken = req.headers.first(name: "X-CI-Token")
+        let token = bearer ?? headerToken
+        guard token == publishToken else {
+            throw Abort(.unauthorized, reason: "invalid CI token")
         }
     }
 

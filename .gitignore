@@ -32,3 +32,4 @@ DerivedData/
 
 # Server runtime artifacts
 server/ResourceUpdateServer/Public/manifests/
+server/ResourceUpdateServer/Public/artifacts/
