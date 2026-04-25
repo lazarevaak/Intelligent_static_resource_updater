@@ -84,7 +84,7 @@ actor ManifestStorage {
         var committedPatchURL: URL?
         var latestWasUpdated = false
         if let fromVersion = previousLatest, let fromManifest = previousManifest {
-            let artifact = buildPatchArtifact(
+            let artifact = try await buildPatchArtifact(
                 appId: appId,
                 fromVersion: fromVersion,
                 toVersion: version,
@@ -186,7 +186,7 @@ actor ManifestStorage {
         )
     }
 
-    func loadPatchArtifact(appId: String, fromVersion: String, toVersion: String) throws -> (data: Data, sha256: String) {
+    func loadPatchArtifact(appId: String, fromVersion: String, toVersion: String) async throws -> (data: Data, sha256: String) {
         let url = patchArtifactURL(appId: appId, fromVersion: fromVersion, toVersion: toVersion)
         if FileManager.default.fileExists(atPath: url.path) {
             let data = try Data(contentsOf: url)
@@ -195,7 +195,7 @@ actor ManifestStorage {
 
         let fromManifest = try load(appId: appId, version: fromVersion)
         let toManifest = try load(appId: appId, version: toVersion)
-        let artifact = buildPatchArtifact(
+        let artifact = try await buildPatchArtifact(
             appId: appId,
             fromVersion: fromVersion,
             toVersion: toVersion,
@@ -304,19 +304,47 @@ actor ManifestStorage {
         toVersion: String,
         fromManifest: Manifest,
         toManifest: Manifest
-    ) -> PatchArtifact {
+    ) async throws -> PatchArtifact {
         let diff = buildDiff(fromManifest: fromManifest, toManifest: toManifest)
         var operations: [PatchOperation] = []
 
         operations.append(contentsOf: diff.removed.map {
-            PatchOperation(op: "remove", path: $0, hash: nil, size: nil)
+            PatchOperation(op: "remove", path: $0, hash: nil, size: nil, dataBase64: nil, delta: nil)
         })
-        operations.append(contentsOf: diff.added.map {
-            PatchOperation(op: "add", path: $0.path, hash: $0.hash, size: $0.size)
-        })
-        operations.append(contentsOf: diff.changed.map {
-            PatchOperation(op: "replace", path: $0.path, hash: $0.toHash, size: $0.size)
-        })
+        for added in diff.added {
+            let payload = try await loadResource(appId: appId, hash: added.hash)
+            operations.append(
+                PatchOperation(
+                    op: "add",
+                    path: added.path,
+                    hash: added.hash,
+                    size: added.size,
+                    dataBase64: payload.base64EncodedString(),
+                    delta: nil
+                )
+            )
+        }
+        for changed in diff.changed {
+            let payload = try await loadResource(appId: appId, hash: changed.toHash)
+            let sourcePayload = try? await loadResource(appId: appId, hash: changed.fromHash)
+            let deltaPatch = makeSpliceDeltaPatch(
+                sourceData: sourcePayload,
+                sourceHash: changed.fromHash,
+                sourceSize: changed.fromSize,
+                targetData: payload,
+                targetHash: changed.toHash
+            )
+            operations.append(
+                PatchOperation(
+                    op: "replace",
+                    path: changed.path,
+                    hash: changed.toHash,
+                    size: changed.size,
+                    dataBase64: nil,
+                    delta: deltaPatch
+                )
+            )
+        }
 
         return PatchArtifact(
             schemaVersion: toManifest.schemaVersion,
@@ -346,6 +374,7 @@ actor ManifestStorage {
                     ChangedResource(
                         path: path,
                         fromHash: source.hash,
+                        fromSize: source.size,
                         toHash: target.hash,
                         size: target.size
                     )
@@ -361,6 +390,60 @@ actor ManifestStorage {
         changed.sort { $0.path < $1.path }
         removed.sort()
         return (added, changed, removed)
+    }
+
+    private func makeSpliceDeltaPatch(
+        sourceData: Data?,
+        sourceHash: String,
+        sourceSize: Int,
+        targetData: Data,
+        targetHash: String
+    ) -> BinaryDeltaPatch {
+        let source = sourceData ?? Data()
+        let baseSize = sourceData == nil ? sourceSize : source.count
+        let operation: BinaryDeltaOperation
+
+        if sourceData == nil || source.isEmpty {
+            operation = BinaryDeltaOperation(
+                offset: 0,
+                deleteLength: baseSize,
+                dataBase64: targetData.base64EncodedString()
+            )
+        } else {
+            let sourceBytes = [UInt8](source)
+            let targetBytes = [UInt8](targetData)
+
+            var prefix = 0
+            while prefix < sourceBytes.count, prefix < targetBytes.count, sourceBytes[prefix] == targetBytes[prefix] {
+                prefix += 1
+            }
+
+            var suffix = 0
+            while suffix < (sourceBytes.count - prefix),
+                  suffix < (targetBytes.count - prefix),
+                  sourceBytes[sourceBytes.count - 1 - suffix] == targetBytes[targetBytes.count - 1 - suffix] {
+                suffix += 1
+            }
+
+            let sourceEnd = sourceBytes.count - suffix
+            let targetEnd = targetBytes.count - suffix
+            let middle = Data(targetBytes[prefix..<targetEnd])
+
+            operation = BinaryDeltaOperation(
+                offset: prefix,
+                deleteLength: sourceEnd - prefix,
+                dataBase64: middle.base64EncodedString()
+            )
+        }
+
+        return BinaryDeltaPatch(
+            algorithm: "splice-v1",
+            baseHash: sourceHash,
+            baseSize: baseSize,
+            targetHash: targetHash,
+            targetSize: targetData.count,
+            operations: [operation]
+        )
     }
 
     private func sha256(_ data: Data) -> String {
