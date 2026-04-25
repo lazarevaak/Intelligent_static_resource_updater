@@ -24,6 +24,8 @@ func routes(_ app: Application, config: ServerConfig) throws {
     v1.get("manifest", ":appId", "latest", use: manifestController.getLatestManifest)
     v1.get("manifest", ":appId", "version", ":version", use: manifestController.getManifest)
     v1.post("manifest", ":appId", "version", ":version", use: manifestController.updateManifest)
+    v1.post("resource", ":appId", "upload", use: manifestController.uploadResource)
+    v1.get("resource", ":appId", "hash", ":hash", use: manifestController.getResource)
     v1.get("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", use: manifestController.getPatch)
     v1.get("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", "meta", use: manifestController.getPatchMeta)
 }

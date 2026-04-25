@@ -10,7 +10,7 @@ swift run
 
 Optional environment:
 
-- `CI_PUBLISH_TOKEN` (default: `dev-ci-token`)
+- `CI_PUBLISH_TOKEN` (required)
 - `ARTIFACT_BACKEND` = `local` | `s3` (default: `local`)
 - `S3_BUCKET` (required when `ARTIFACT_BACKEND=s3`)
 - `S3_REGION` (default: `us-east-1`)
@@ -50,10 +50,12 @@ Response `200 OK`:
 
 ```json
 {
+  "schemaVersion": 1,
+  "minSdkVersion": "1.0",
   "version": "1.1.0",
   "generatedAt": "2026-04-20T15:30:00Z",
   "resources": [
-    { "path": "images/a.png", "hash": "aaaaaaaa", "size": 100 }
+    { "path": "images/a.png", "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 100 }
   ]
 }
 ```
@@ -66,10 +68,12 @@ Response `200 OK`:
 
 ```json
 {
+  "schemaVersion": 1,
+  "minSdkVersion": "1.0",
   "version": "1.0.0",
   "generatedAt": "2026-04-20T15:00:00Z",
   "resources": [
-    { "path": "images/a.png", "hash": "aaaaaaaa", "size": 100 }
+    { "path": "images/a.png", "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 100 }
   ]
 }
 ```
@@ -82,22 +86,28 @@ Requires CI auth token:
 - `X-CI-Token: <token>` or
 - `Authorization: Bearer <token>`
 
+Requires idempotency key:
+- `X-Request-Id: <uuid>`
+
 Request body:
 
 ```json
 {
+  "schemaVersion": 1,
+  "minSdkVersion": "1.0",
   "version": "1.1.0",
   "generatedAt": "2026-04-20T15:30:00Z",
   "resources": [
-    { "path": "images/a.png", "hash": "cccccccc", "size": 101 },
-    { "path": "fonts/regular.ttf", "hash": "dddddddd", "size": 300 }
+    { "path": "images/a.png", "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 101 },
+    { "path": "fonts/regular.ttf", "hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "size": 300 }
   ]
 }
 ```
 
 Responses:
 - `201 Created` when saved
-- `409 Conflict` if this version already exists
+- `200 OK` for idempotent retry with same `X-Request-Id` and same payload
+- `409 Conflict` if same `X-Request-Id` was reused with different payload
 - `400 Bad Request` for validation errors
 - `401 Unauthorized` for missing/invalid CI token
 
@@ -115,15 +125,46 @@ Response `200 OK`:
   "generatedAt": "2026-04-20T15:35:00Z",
   "operations": [
     { "op": "remove", "path": "config/main.json", "hash": null, "size": null },
-    { "op": "add", "path": "fonts/regular.ttf", "hash": "dddddddd", "size": 300 },
-    { "op": "replace", "path": "images/a.png", "hash": "cccccccc", "size": 101 }
+    { "op": "add", "path": "fonts/regular.ttf", "hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "size": 300 },
+    { "op": "replace", "path": "images/a.png", "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 101 }
   ]
 }
 ```
 
+Response headers:
+- `Content-Type: application/json`
+- `Content-Disposition: attachment; filename="<from>-<to>.patch.json"`
+- `X-Patch-SHA256: <sha256>`
+
 Returns `404 Not Found` when `fromVersion` or `toVersion` manifest does not exist.
 
-### 5) GET patch meta
+### 5) POST resource upload
+
+`POST /v1/resource/:appId/upload`
+
+Headers:
+- `X-CI-Token` or `Authorization: Bearer`
+- `X-Resource-Path` (relative path in app bundle)
+- `X-Resource-Hash` (sha256 hex, 64 chars)
+- `X-Resource-Size` (optional, bytes)
+
+Request body: raw binary bytes of resource file.
+
+Responses:
+- `201 Created` for new resource
+- `200 OK` if the same hash already existed
+- `400 Bad Request` for hash/size mismatch
+- `401 Unauthorized` for invalid publish token
+
+### 6) GET resource by hash
+
+`GET /v1/resource/:appId/hash/:hash`
+
+Response: raw binary (`application/octet-stream`) with headers:
+- `X-Resource-Hash`
+- `X-Resource-Size`
+
+### 7) GET patch meta
 
 `GET /v1/patch/:appId/from/:fromVersion/to/:toVersion/meta`
 
@@ -136,10 +177,10 @@ Response `200 OK`:
   "toVersion": "1.1.0",
   "generatedAt": "2026-04-20T15:35:00Z",
   "added": [
-    { "path": "fonts/regular.ttf", "hash": "dddddddd", "size": 300 }
+    { "path": "fonts/regular.ttf", "hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "size": 300 }
   ],
   "changed": [
-    { "path": "images/a.png", "fromHash": "aaaaaaaa", "toHash": "cccccccc", "size": 101 }
+    { "path": "images/a.png", "fromHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "toHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 101 }
   ],
   "removed": [
     "config/main.json"
@@ -166,11 +207,13 @@ All API errors use a single JSON envelope:
 ## Publish flow
 
 Publish in server storage is performed as:
-1. Validate input and version constraints.
-2. Stage manifest locally (`.pending`).
-3. Upload artifacts (manifest + patch-meta + patch document).
-4. Commit manifest file.
-5. Switch `latest` pointer.
+1. Upload resource binaries via `POST /v1/resource/:appId/upload`.
+2. Validate manifest input, auth token, and idempotency key.
+3. Stage manifest and patch document locally (`.pending` files).
+4. Upload patch artifact to artifact backend (when previous version exists).
+5. Commit manifest and patch document in local storage.
+6. Switch `latest` pointer.
+7. Save idempotency record.
 
 If any step fails, staged files and uploaded artifacts are rolled back best-effort.
 

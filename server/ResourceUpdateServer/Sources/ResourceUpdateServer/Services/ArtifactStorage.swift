@@ -5,6 +5,7 @@ import SotoCore
 
 protocol ArtifactStorage: Sendable {
     func put(_ data: Data, key: String, contentType: String?) async throws
+    func get(key: String) async throws -> Data?
     func delete(key: String) async throws
 }
 
@@ -22,6 +23,15 @@ struct LocalArtifactStorage: ArtifactStorage {
         let parent = targetURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         try data.write(to: targetURL, options: .atomic)
+    }
+
+    func get(key: String) async throws -> Data? {
+        let safeKey = key.replacingOccurrences(of: "..", with: "_")
+        let targetURL = baseDirectoryURL.appendingPathComponent(safeKey)
+        guard FileManager.default.fileExists(atPath: targetURL.path) else {
+            return nil
+        }
+        return try Data(contentsOf: targetURL)
     }
 
     func delete(key: String) async throws {
@@ -69,6 +79,19 @@ final class S3ArtifactStorage: ArtifactStorage, Sendable {
             key: key
         )
         _ = try await s3.putObject(request)
+    }
+
+    func get(key: String) async throws -> Data? {
+        guard !bucket.isEmpty else {
+            throw Abort(.internalServerError, reason: "S3 bucket is not configured")
+        }
+        do {
+            let output = try await s3.getObject(.init(bucket: bucket, key: key))
+            var buffer = try await output.body.collect(upTo: .max)
+            return buffer.readData(length: buffer.readableBytes) ?? Data()
+        } catch let error as AWSResponseError where error.context?.responseCode == .notFound {
+            return nil
+        }
     }
 
     func delete(key: String) async throws {

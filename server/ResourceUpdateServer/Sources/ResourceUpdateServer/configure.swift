@@ -17,13 +17,14 @@ public func configure(_ app: Application) async throws {
     contentConfig.use(decoder: decoder, for: .json)
 
     ContentConfiguration.global = contentConfig
+    app.middleware.use(RequestIDMiddleware())
     app.middleware.use(APIErrorMiddleware())
     app.middleware.use(RequestLoggingMiddleware())
 
-    let config = ServerConfig.fromEnvironment()
+    let config = try ServerConfig.fromEnvironment()
     var metadata: Logger.Metadata = [
         "artifact_backend": .string(config.artifactBackend.rawValue),
-        "publish_token_source": .string(Environment.get("CI_PUBLISH_TOKEN") == nil ? "default" : "env")
+        "publish_token_source": .string("env")
     ]
     if let s3 = config.s3 {
         metadata["s3_bucket"] = .string(s3.bucket)
