@@ -8,6 +8,48 @@ Swift/Vapor server for static resource manifest delivery.
 swift run
 ```
 
+Local CLI modes (without CI pipeline):
+
+```bash
+swift run ResourceUpdateServer publish-local \
+  --base-url http://127.0.0.1:8080/ \
+  --app-id demoapp \
+  --version 1.2.0 \
+  --resources-dir ./SampleResources \
+  --token dev-ci-token
+```
+
+`publish-local` does:
+- recursively scans `--resources-dir`;
+- computes `sha256` + file size for each resource;
+- uploads resources via `POST /v1/resource/:appId/upload`;
+- publishes manifest via `POST /v1/manifest/:appId/version/:version`;
+- prints summary (uploaded/skipped/manifest status).
+
+Dry run (build manifest locally, no uploads):
+
+```bash
+swift run ResourceUpdateServer dry-run \
+  --app-id demoapp \
+  --version 1.2.0 \
+  --resources-dir ./SampleResources \
+  --json
+```
+
+Validation only:
+
+```bash
+swift run ResourceUpdateServer validate \
+  --app-id demoapp \
+  --version 1.2.0 \
+  --resources-dir ./SampleResources
+```
+
+Optional flags:
+- `--min-sdk-version` (default: `1.0`)
+- `--request-id` (default: random UUID)
+- `--token` (if omitted, reads `CI_PUBLISH_TOKEN`)
+
 Optional environment:
 
 - `CI_PUBLISH_TOKEN` (required)
@@ -124,9 +166,25 @@ Response `200 OK`:
   "toVersion": "1.1.0",
   "generatedAt": "2026-04-20T15:35:00Z",
   "operations": [
-    { "op": "remove", "path": "config/main.json", "hash": null, "size": null },
-    { "op": "add", "path": "fonts/regular.ttf", "hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "size": 300 },
-    { "op": "replace", "path": "images/a.png", "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 101 }
+    { "op": "remove", "path": "config/main.json", "hash": null, "size": null, "dataBase64": null, "delta": null },
+    { "op": "add", "path": "fonts/regular.ttf", "hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "size": 300, "dataBase64": "AAECAwQF...", "delta": null },
+    {
+      "op": "replace",
+      "path": "images/a.png",
+      "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size": 101,
+      "dataBase64": null,
+      "delta": {
+        "algorithm": "splice-v1",
+        "baseHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "baseSize": 100,
+        "targetHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "targetSize": 101,
+        "operations": [
+          { "offset": 6, "deleteLength": 3, "dataBase64": "R0lG" }
+        ]
+      }
+    }
   ]
 }
 ```
@@ -137,6 +195,14 @@ Response headers:
 - `X-Patch-SHA256: <sha256>`
 
 Returns `404 Not Found` when `fromVersion` or `toVersion` manifest does not exist.
+
+SDK apply rules:
+- verify `X-Patch-SHA256` against raw response body;
+- parse operations in given order;
+- `remove`: delete local file by `path`;
+- `add`: decode `dataBase64`, verify `sha256(data) == hash` and `data.count == size`, then write file by `path`;
+- `replace`: apply `delta.operations` (`offset`, `deleteLength`, `dataBase64`) to current local bytes, then verify `sha256(result) == delta.targetHash == hash` and `result.count == delta.targetSize == size`;
+- if any operation fails, rollback to previous local snapshot.
 
 ### 5) POST resource upload
 
@@ -180,7 +246,7 @@ Response `200 OK`:
     { "path": "fonts/regular.ttf", "hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "size": 300 }
   ],
   "changed": [
-    { "path": "images/a.png", "fromHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "toHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 101 }
+    { "path": "images/a.png", "fromHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "fromSize": 100, "toHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 101 }
   ],
   "removed": [
     "config/main.json"

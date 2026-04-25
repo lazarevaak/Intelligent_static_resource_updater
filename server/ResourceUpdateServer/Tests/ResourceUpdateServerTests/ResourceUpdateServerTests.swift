@@ -81,6 +81,12 @@ struct ResourceUpdateServerTests {
             let appId = "demoapp-\(UUID().uuidString)"
             let fromVersion = "1.0.0"
             let toVersion = "1.1.0"
+            let originalPayload = Data("image-v1-content".utf8)
+            let originalHash = sha256(originalPayload)
+            let changedPayload = Data("image-v2-content".utf8)
+            let changedHash = sha256(changedPayload)
+            let addedPayload = Data("new-font-content".utf8)
+            let addedHash = sha256(addedPayload)
 
             let fromManifest = Manifest(
                 schemaVersion: 1,
@@ -88,7 +94,7 @@ struct ResourceUpdateServerTests {
                 version: fromVersion,
                 generatedAt: Date(),
                 resources: [
-                    ResourceEntry(path: "images/a.png", hash: hexHash("a"), size: 100),
+                    ResourceEntry(path: "images/a.png", hash: originalHash, size: originalPayload.count),
                     ResourceEntry(path: "config/main.json", hash: hexHash("b"), size: 200)
                 ]
             )
@@ -99,8 +105,8 @@ struct ResourceUpdateServerTests {
                 version: toVersion,
                 generatedAt: Date(),
                 resources: [
-                    ResourceEntry(path: "images/a.png", hash: hexHash("c"), size: 101),
-                    ResourceEntry(path: "fonts/regular.ttf", hash: hexHash("d"), size: 300)
+                    ResourceEntry(path: "images/a.png", hash: changedHash, size: changedPayload.count),
+                    ResourceEntry(path: "fonts/regular.ttf", hash: addedHash, size: addedPayload.count)
                 ]
             )
 
@@ -111,6 +117,51 @@ struct ResourceUpdateServerTests {
                     req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
                     req.headers.replaceOrAdd(name: "X-Request-Id", value: UUID().uuidString)
                     try req.content.encode(fromManifest)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .created)
+                }
+            )
+
+            try await app.testing().test(
+                .POST,
+                "v1/resource/\(appId)/upload",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Resource-Path", value: "images/a.png")
+                    req.headers.replaceOrAdd(name: "X-Resource-Hash", value: originalHash)
+                    req.headers.replaceOrAdd(name: "X-Resource-Size", value: String(originalPayload.count))
+                    req.body = .init(data: originalPayload)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .created)
+                }
+            )
+
+            try await app.testing().test(
+                .POST,
+                "v1/resource/\(appId)/upload",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Resource-Path", value: "images/a.png")
+                    req.headers.replaceOrAdd(name: "X-Resource-Hash", value: changedHash)
+                    req.headers.replaceOrAdd(name: "X-Resource-Size", value: String(changedPayload.count))
+                    req.body = .init(data: changedPayload)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .created)
+                }
+            )
+
+            try await app.testing().test(
+                .POST,
+                "v1/resource/\(appId)/upload",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                    req.headers.replaceOrAdd(name: "X-Resource-Path", value: "fonts/regular.ttf")
+                    req.headers.replaceOrAdd(name: "X-Resource-Hash", value: addedHash)
+                    req.headers.replaceOrAdd(name: "X-Resource-Size", value: String(addedPayload.count))
+                    req.body = .init(data: addedPayload)
                 },
                 afterResponse: { res async in
                     #expect(res.status == .created)
@@ -139,6 +190,24 @@ struct ResourceUpdateServerTests {
                     let decoded = try? res.content.decode(PatchArtifact.self)
                     #expect(decoded != nil)
                     #expect(decoded?.operations.map(\.op) == ["remove", "add", "replace"])
+                    let add = decoded?.operations.first(where: { $0.op == "add" })
+                    let replace = decoded?.operations.first(where: { $0.op == "replace" })
+                    #expect(add?.dataBase64 != nil)
+                    #expect(replace?.dataBase64 == nil)
+                    #expect(replace?.delta != nil)
+                    if let addBase64 = add?.dataBase64, let addData = Data(base64Encoded: addBase64) {
+                        #expect(addData == addedPayload)
+                    } else {
+                        #expect(Bool(false))
+                    }
+                    if let replaceDelta = replace?.delta, let replaceData = applyDelta(replaceDelta, on: originalPayload) {
+                        #expect(replaceDelta.algorithm == "splice-v1")
+                        #expect(replaceDelta.baseHash == originalHash)
+                        #expect(replaceDelta.targetHash == changedHash)
+                        #expect(replaceData == changedPayload)
+                    } else {
+                        #expect(Bool(false))
+                    }
                 }
             )
         }
@@ -357,14 +426,23 @@ struct ResourceUpdateServerTests {
             let failedRequestId = UUID().uuidString
 
             let fromManifest = makeManifest(version: fromVersion)
+            let changedPayload = Data("new-image-content".utf8)
             let toManifest = Manifest(
                 schemaVersion: 1,
                 minSdkVersion: "1.0",
                 version: toVersion,
                 generatedAt: Date(),
                 resources: [
-                    ResourceEntry(path: "images/a.png", hash: hexHash("c"), size: 101)
+                    ResourceEntry(path: "images/a.png", hash: sha256(changedPayload), size: changedPayload.count)
                 ]
+            )
+
+            _ = try await storage.uploadResource(
+                appId: appId,
+                path: "images/a.png",
+                expectedHash: sha256(changedPayload),
+                expectedSize: changedPayload.count,
+                data: changedPayload
             )
 
             let created = try await storage.save(
@@ -491,6 +569,25 @@ struct ResourceUpdateServerTests {
     private func sha256(_ data: Data) -> String {
         let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func applyDelta(_ delta: BinaryDeltaPatch, on source: Data) -> Data? {
+        var output = source
+        for operation in delta.operations.reversed() {
+            guard operation.offset >= 0,
+                  operation.deleteLength >= 0,
+                  operation.offset <= output.count,
+                  operation.offset + operation.deleteLength <= output.count,
+                  let insertData = Data(base64Encoded: operation.dataBase64) else {
+                return nil
+            }
+
+            output.replaceSubrange(
+                operation.offset..<(operation.offset + operation.deleteLength),
+                with: insertData
+            )
+        }
+        return output
     }
 }
 

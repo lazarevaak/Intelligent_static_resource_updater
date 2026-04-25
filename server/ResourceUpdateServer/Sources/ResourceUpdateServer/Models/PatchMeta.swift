@@ -13,6 +13,7 @@ struct PatchMeta: Content {
 struct ChangedResource: Content {
     let path: String
     let fromHash: String
+    let fromSize: Int
     let toHash: String
     let size: Int
 }

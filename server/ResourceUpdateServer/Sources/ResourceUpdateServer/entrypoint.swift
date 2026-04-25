@@ -1,4 +1,5 @@
 import Vapor
+import ArgumentParser
 import Logging
 import NIOCore
 import NIOPosix
@@ -6,6 +7,20 @@ import NIOPosix
 @main
 enum Entrypoint {
     static func main() async throws {
+        let cliSubcommands = Set(["publish-local", "dry-run", "validate"])
+        if CommandLine.arguments.count >= 2, cliSubcommands.contains(CommandLine.arguments[1]) {
+            do {
+                var command = try ResourceUpdateCLI.parse(Array(CommandLine.arguments.dropFirst(1)))
+                try command.run()
+            } catch is CleanExit {
+                return
+            } catch {
+                fputs("\(error.localizedDescription)\n", stderr)
+                throw error
+            }
+            return
+        }
+
         var env = try Environment.detect()
         try LoggingSystem.bootstrap(from: &env)
         
