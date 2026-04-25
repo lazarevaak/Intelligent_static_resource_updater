@@ -45,6 +45,15 @@ swift run ResourceUpdateServer validate \
   --resources-dir ./SampleResources
 ```
 
+Cleanup old versions/resources (local storage):
+
+```bash
+swift run ResourceUpdateServer cleanup \
+  --app-id demoapp \
+  --keep-last 3 \
+  --public-dir ./Public
+```
+
 Optional flags:
 - `--min-sdk-version` (default: `1.0`)
 - `--request-id` (default: random UUID)
@@ -60,6 +69,12 @@ Optional environment:
 - `S3_ACCESS_KEY_ID` (required when `ARTIFACT_BACKEND=s3`)
 - `S3_SECRET_ACCESS_KEY` (required when `ARTIFACT_BACKEND=s3`)
 - `S3_PATH_STYLE` = `true` | `false` (default: `true`)
+- `SIGNING_KEYS_JSON` (preferred, required for multi-key mode): JSON array:
+  - `[{ "keyId": "...", "privateKeyBase64": "...", "createdAt": "2026-04-25T00:00:00Z" }]`
+- `SIGNING_ACTIVE_KEY_ID` (required when `SIGNING_KEYS_JSON` is set)
+- Backward-compatible single-key mode:
+  - `SIGNING_PRIVATE_KEY_BASE64` (Ed25519 private key raw 32 bytes in base64)
+  - `SIGNING_KEY_ID` (optional, default: `main`)
 
 ## Test
 
@@ -84,7 +99,27 @@ swift test
 
 Base path: `/v1`
 
-### 1) GET latest manifest
+### 1) GET signing keys
+
+`GET /v1/keys`
+
+Response `200 OK`:
+
+```json
+[
+  {
+    "keyId": "k-2026-04",
+    "alg": "ed25519",
+    "publicKeyBase64": "...",
+    "createdAt": "2026-04-25T00:00:00Z",
+    "active": true
+  }
+]
+```
+
+`GET /v1/keys/:keyId` returns one key or `404`.
+
+### 2) GET latest manifest
 
 `GET /v1/manifest/:appId/latest`
 
@@ -102,7 +137,7 @@ Response `200 OK`:
 }
 ```
 
-### 2) GET manifest by version
+### 3) GET manifest by version
 
 `GET /v1/manifest/:appId/version/:version`
 
@@ -120,7 +155,62 @@ Response `200 OK`:
 }
 ```
 
-### 3) POST publish manifest
+Response headers for manifest integrity/authenticity:
+- `X-Manifest-SHA256: <sha256>`
+- `X-Signature: <base64-ed25519-signature>`
+- `X-Signature-Alg: ed25519`
+- `X-Signature-Key-Id: <key-id>`
+
+### 4) GET update decision
+
+`GET /v1/updates/:appId?fromVersion=<version>&sdkVersion=<sdk>`
+
+Response `200 OK`:
+
+```json
+{
+  "decision": "patch",
+  "appId": "demoapp",
+  "fromVersion": "1.0.0",
+  "latestVersion": "1.1.0",
+  "sdkVersion": "2.1",
+  "reason": "patch-available",
+  "manifest": {
+    "url": "/v1/manifest/demoapp/version/1.1.0",
+    "sha256": "....",
+    "signature": "....",
+    "signatureAlgorithm": "ed25519",
+    "signatureKeyId": "main",
+    "size": 512
+  },
+  "patch": {
+    "url": "/v1/patch/demoapp/from/1.0.0/to/1.1.0",
+    "sha256": "....",
+    "signature": "....",
+    "signatureAlgorithm": "ed25519",
+    "signatureKeyId": "main",
+    "size": 928
+  }
+}
+```
+
+Response headers for decision integrity/authenticity:
+- `X-Updates-SHA256: <sha256>`
+- `X-Updates-Signature: <base64-ed25519-signature>`
+- `X-Updates-Signature-Alg: ed25519`
+- `X-Updates-Signature-Key-Id: <key-id>`
+
+Decisions:
+- `no-update`: `fromVersion` already equals latest.
+- `manifest-only`: patch is not applicable (missing params / sdk too old / patch unavailable).
+- `patch`: patch can be applied.
+
+SDK validation for `/v1/updates`:
+- verify `sha256(rawBody)` equals `X-Updates-SHA256`;
+- verify signature in `X-Updates-Signature` for raw body using public key from `/v1/keys`;
+- trust `decision/reason/url` only after signature verification.
+
+### 5) POST publish manifest
 
 `POST /v1/manifest/:appId/version/:version`
 
@@ -153,7 +243,31 @@ Responses:
 - `400 Bad Request` for validation errors
 - `401 Unauthorized` for missing/invalid CI token
 
-### 4) GET patch
+### 6) POST patch artifact upload
+
+`POST /v1/patch/:appId/from/:fromVersion/to/:toVersion/upload`
+
+Requires CI auth token:
+- `X-CI-Token: <token>` or
+- `Authorization: Bearer <token>`
+
+Requires idempotency key:
+- `X-Request-Id: <uuid>`
+
+Headers:
+- `X-Patch-SHA256` (sha256 hex, 64 chars)
+- `X-Patch-Size` (optional, bytes)
+
+Body: raw bytes of patch artifact (`application/json` or `application/octet-stream`).
+
+Responses:
+- `201 Created` when uploaded
+- `200 OK` for idempotent retry with same `X-Request-Id` and same payload hash
+- `409 Conflict` if same `X-Request-Id` was reused with different payload
+- `400 Bad Request` for hash/size mismatch
+- `404 Not Found` if `fromVersion` or `toVersion` manifest does not exist
+
+### 7) GET patch
 
 `GET /v1/patch/:appId/from/:fromVersion/to/:toVersion`
 
@@ -193,18 +307,31 @@ Response headers:
 - `Content-Type: application/json`
 - `Content-Disposition: attachment; filename="<from>-<to>.patch.json"`
 - `X-Patch-SHA256: <sha256>`
+- `X-Signature: <base64-ed25519-signature>`
+- `X-Signature-Alg: ed25519`
+- `X-Signature-Key-Id: <key-id>`
 
 Returns `404 Not Found` when `fromVersion` or `toVersion` manifest does not exist.
 
 SDK apply rules:
 - verify `X-Patch-SHA256` against raw response body;
 - parse operations in given order;
+- execute patch in transaction mode:
+  - keep snapshot of current local resources before first operation;
+  - do not partially commit final state until all validations pass.
 - `remove`: delete local file by `path`;
 - `add`: decode `dataBase64`, verify `sha256(data) == hash` and `data.count == size`, then write file by `path`;
-- `replace`: apply `delta.operations` (`offset`, `deleteLength`, `dataBase64`) to current local bytes, then verify `sha256(result) == delta.targetHash == hash` and `result.count == delta.targetSize == size`;
-- if any operation fails, rollback to previous local snapshot.
+- `replace` (`splice-v1`):
+  - verify base resource exists and `sha256(base) == delta.baseHash` and `base.count == delta.baseSize`;
+  - apply each splice operation in reverse order by `offset`:
+    - validate `offset >= 0`, `deleteLength >= 0`,
+    - validate `offset + deleteLength <= currentData.count`,
+    - replace the target range with decoded `dataBase64`;
+  - verify final bytes: `sha256(result) == delta.targetHash == hash`,
+    `result.count == delta.targetSize == size`;
+- if any operation or validation fails, rollback to snapshot and return error.
 
-### 5) POST resource upload
+### 8) POST resource upload
 
 `POST /v1/resource/:appId/upload`
 
@@ -222,7 +349,7 @@ Responses:
 - `400 Bad Request` for hash/size mismatch
 - `401 Unauthorized` for invalid publish token
 
-### 6) GET resource by hash
+### 9) GET resource by hash
 
 `GET /v1/resource/:appId/hash/:hash`
 
@@ -230,7 +357,7 @@ Response: raw binary (`application/octet-stream`) with headers:
 - `X-Resource-Hash`
 - `X-Resource-Size`
 
-### 7) GET patch meta
+### 10) GET patch meta
 
 `GET /v1/patch/:appId/from/:fromVersion/to/:toVersion/meta`
 
@@ -287,3 +414,8 @@ If any step fails, staged files and uploaded artifacts are rolled back best-effo
 
 - `local`: artifacts are stored under `Public/artifacts/...`.
 - `s3`: implemented via Soto S3 client (AWS + S3-compatible endpoints).
+
+Patch serving priority:
+1. local patch artifact cache (`Public/manifests/<appId>/patches/...`);
+2. artifact backend (`artifacts/apps/<appId>/patches/...` or S3 key);
+3. on-the-fly generation from manifests/resources (fallback).

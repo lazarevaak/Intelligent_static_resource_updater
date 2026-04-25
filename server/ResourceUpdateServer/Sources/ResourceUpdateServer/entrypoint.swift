@@ -7,7 +7,7 @@ import NIOPosix
 @main
 enum Entrypoint {
     static func main() async throws {
-        let cliSubcommands = Set(["publish-local", "dry-run", "validate"])
+        let cliSubcommands = Set(["publish-local", "dry-run", "validate", "cleanup"])
         if CommandLine.arguments.count >= 2, cliSubcommands.contains(CommandLine.arguments[1]) {
             do {
                 var command = try ResourceUpdateCLI.parse(Array(CommandLine.arguments.dropFirst(1)))

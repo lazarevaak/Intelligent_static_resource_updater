@@ -24,7 +24,9 @@ public func configure(_ app: Application) async throws {
     let config = try ServerConfig.fromEnvironment()
     var metadata: Logger.Metadata = [
         "artifact_backend": .string(config.artifactBackend.rawValue),
-        "publish_token_source": .string("env")
+        "publish_token_source": .string("env"),
+        "signing_active_key_id": .string(config.signing.activeKeyId),
+        "signing_keys_count": .stringConvertible(config.signing.keys.count)
     ]
     if let s3 = config.s3 {
         metadata["s3_bucket"] = .string(s3.bucket)
