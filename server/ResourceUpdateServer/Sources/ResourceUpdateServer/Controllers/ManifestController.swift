@@ -2,6 +2,25 @@ import CryptoKit
 import Vapor
 
 struct ManifestController {
+    private struct UpdatesETagFingerprint: Encodable {
+        struct ObjectFingerprint: Encodable {
+            let url: String
+            let sha256: String
+            let signatureAlgorithm: String
+            let signatureKeyId: String
+            let size: Int
+        }
+
+        let decision: String
+        let appId: String
+        let fromVersion: String?
+        let latestVersion: String
+        let sdkVersion: String?
+        let reason: String
+        let manifest: ObjectFingerprint
+        let patch: ObjectFingerprint?
+    }
+
     private struct ResourceUploadResponse: Content {
         let hash: String
         let size: Int
@@ -39,7 +58,11 @@ struct ManifestController {
         let appId = try requireParam(req, "appId")
         try validateIdentifier(appId, name: "appId")
         let manifest = try await storage.loadLatest(appId: appId)
-        return try makeSignedManifestResponse(manifest)
+        return try makeSignedManifestResponse(
+            req: req,
+            manifest: manifest,
+            cacheControl: "public, max-age=30, must-revalidate"
+        )
     }
 
     func getManifest(req: Request) async throws -> Response {
@@ -48,7 +71,11 @@ struct ManifestController {
         try validateIdentifier(appId, name: "appId")
         try validateIdentifier(version, name: "version")
         let manifest = try await storage.load(appId: appId, version: version)
-        return try makeSignedManifestResponse(manifest)
+        return try makeSignedManifestResponse(
+            req: req,
+            manifest: manifest,
+            cacheControl: "public, max-age=31536000, immutable"
+        )
     }
 
     func getUpdates(req: Request) async throws -> Response {
@@ -76,6 +103,7 @@ struct ManifestController {
 
         if query.fromVersion == latest.version {
             return try makeSignedUpdatesResponse(
+                req: req,
                 UpdatesResponse(
                 decision: "no-update",
                 appId: appId,
@@ -91,6 +119,7 @@ struct ManifestController {
 
         guard let fromVersion = query.fromVersion else {
             return try makeSignedUpdatesResponse(
+                req: req,
                 UpdatesResponse(
                 decision: "manifest-only",
                 appId: appId,
@@ -106,6 +135,7 @@ struct ManifestController {
 
         guard let sdkVersion = query.sdkVersion else {
             return try makeSignedUpdatesResponse(
+                req: req,
                 UpdatesResponse(
                 decision: "manifest-only",
                 appId: appId,
@@ -121,6 +151,7 @@ struct ManifestController {
 
         if compareVersions(sdkVersion, latest.minSdkVersion) == .orderedAscending {
             return try makeSignedUpdatesResponse(
+                req: req,
                 UpdatesResponse(
                 decision: "manifest-only",
                 appId: appId,
@@ -150,6 +181,7 @@ struct ManifestController {
                 size: patch.data.count
             )
             return try makeSignedUpdatesResponse(
+                req: req,
                 UpdatesResponse(
                 decision: "patch",
                 appId: appId,
@@ -163,6 +195,7 @@ struct ManifestController {
             )
         } catch {
             return try makeSignedUpdatesResponse(
+                req: req,
                 UpdatesResponse(
                 decision: "manifest-only",
                 appId: appId,
@@ -252,9 +285,19 @@ struct ManifestController {
             toVersion: toVersion
         )
 
+        let etag = makeETag(artifact.sha256)
+        if isNotModified(req: req, etag: etag) {
+            return makeNotModifiedResponse(
+                etag: etag,
+                cacheControl: "public, max-age=31536000, immutable"
+            )
+        }
+
         let signature = try signatureService.sign(artifact.data)
         let response = Response(status: .ok, body: .init(data: artifact.data))
         response.headers.replaceOrAdd(name: .contentType, value: "application/json")
+        response.headers.replaceOrAdd(name: "ETag", value: etag)
+        response.headers.replaceOrAdd(name: .cacheControl, value: "public, max-age=31536000, immutable")
         response.headers.replaceOrAdd(
             name: .contentDisposition,
             value: "attachment; filename=\"\(fromVersion)-\(toVersion).patch.json\""
@@ -464,10 +507,20 @@ struct ManifestController {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    private func makeSignedManifestResponse(_ manifest: Manifest) throws -> Response {
+    private func makeSignedManifestResponse(
+        req: Request,
+        manifest: Manifest,
+        cacheControl: String
+    ) throws -> Response {
         let signature = try signatureService.sign(manifest)
+        let etag = makeETag(signature.sha256)
+        if isNotModified(req: req, etag: etag) {
+            return makeNotModifiedResponse(etag: etag, cacheControl: cacheControl)
+        }
         let response = Response(status: .ok, body: .init(data: signature.data))
         response.headers.replaceOrAdd(name: .contentType, value: "application/json")
+        response.headers.replaceOrAdd(name: "ETag", value: etag)
+        response.headers.replaceOrAdd(name: .cacheControl, value: cacheControl)
         response.headers.replaceOrAdd(name: "X-Manifest-SHA256", value: signature.sha256)
         response.headers.replaceOrAdd(name: "X-Signature", value: signature.signatureBase64)
         response.headers.replaceOrAdd(name: "X-Signature-Alg", value: signature.algorithm)
@@ -475,15 +528,85 @@ struct ManifestController {
         return response
     }
 
-    private func makeSignedUpdatesResponse(_ payload: UpdatesResponse) throws -> Response {
+    private func makeSignedUpdatesResponse(req: Request, _ payload: UpdatesResponse) throws -> Response {
+        let etag = try makeUpdatesStateETag(payload)
+        let cacheControl = "public, max-age=15, must-revalidate"
+        if isNotModified(req: req, etag: etag) {
+            return makeNotModifiedResponse(etag: etag, cacheControl: cacheControl)
+        }
+
         let signature = try signatureService.sign(payload)
         let response = Response(status: .ok, body: .init(data: signature.data))
         response.headers.replaceOrAdd(name: .contentType, value: "application/json")
+        response.headers.replaceOrAdd(name: "ETag", value: etag)
+        response.headers.replaceOrAdd(name: .cacheControl, value: cacheControl)
         response.headers.replaceOrAdd(name: "X-Updates-SHA256", value: signature.sha256)
         response.headers.replaceOrAdd(name: "X-Updates-Signature", value: signature.signatureBase64)
         response.headers.replaceOrAdd(name: "X-Updates-Signature-Alg", value: signature.algorithm)
         response.headers.replaceOrAdd(name: "X-Updates-Signature-Key-Id", value: signature.keyId)
         return response
+    }
+
+    private func makeUpdatesStateETag(_ payload: UpdatesResponse) throws -> String {
+        let fingerprint = UpdatesETagFingerprint(
+            decision: payload.decision,
+            appId: payload.appId,
+            fromVersion: payload.fromVersion,
+            latestVersion: payload.latestVersion,
+            sdkVersion: payload.sdkVersion,
+            reason: payload.reason,
+            manifest: .init(
+                url: payload.manifest.url,
+                sha256: payload.manifest.sha256,
+                signatureAlgorithm: payload.manifest.signatureAlgorithm,
+                signatureKeyId: payload.manifest.signatureKeyId,
+                size: payload.manifest.size
+            ),
+            patch: payload.patch.map {
+                .init(
+                    url: $0.url,
+                    sha256: $0.sha256,
+                    signatureAlgorithm: $0.signatureAlgorithm,
+                    signatureKeyId: $0.signatureKeyId,
+                    size: $0.size
+                )
+            }
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(fingerprint)
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return makeETag(digest)
+    }
+
+    private func makeNotModifiedResponse(etag: String, cacheControl: String) -> Response {
+        let response = Response(status: .notModified)
+        response.headers.replaceOrAdd(name: "ETag", value: etag)
+        response.headers.replaceOrAdd(name: .cacheControl, value: cacheControl)
+        return response
+    }
+
+    private func makeETag(_ digest: String) -> String {
+        "\"\(digest)\""
+    }
+
+    private func isNotModified(req: Request, etag: String) -> Bool {
+        guard let value = req.headers.first(name: "If-None-Match") else {
+            return false
+        }
+        if value.trimmingCharacters(in: .whitespacesAndNewlines) == "*" {
+            return true
+        }
+        let candidates = value
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        return candidates.contains { candidate in
+            if candidate == etag {
+                return true
+            }
+            return candidate.trimmingCharacters(in: CharacterSet(charactersIn: "\"")) == etag.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        }
     }
 
     private func compareVersions(_ lhs: String, _ rhs: String) -> ComparisonResult {

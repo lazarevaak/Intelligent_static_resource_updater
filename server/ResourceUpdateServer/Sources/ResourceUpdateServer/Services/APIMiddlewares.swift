@@ -92,12 +92,26 @@ struct APIErrorMiddleware: AsyncMiddleware {
 }
 
 struct RequestLoggingMiddleware: AsyncMiddleware {
+    private let metrics: APIMetricsCollector
+
+    init(metrics: APIMetricsCollector) {
+        self.metrics = metrics
+    }
+
     func respond(to request: Request, chainingTo next: any AsyncResponder) async throws -> Response {
         let start = DispatchTime.now().uptimeNanoseconds
         let response = try await next.respond(to: request)
         let end = DispatchTime.now().uptimeNanoseconds
         let durationMs = Double(end - start) / 1_000_000
+        let responseBytes = Int(response.headers.first(name: .contentLength) ?? "") ?? 0
         let requestId = request.requestID
+
+        await metrics.record(
+            path: request.url.path,
+            status: response.status,
+            durationMs: durationMs,
+            responseBytes: responseBytes
+        )
 
         request.logger.info(
             "request_completed",
@@ -106,7 +120,8 @@ struct RequestLoggingMiddleware: AsyncMiddleware {
                 "method": .string(request.method.rawValue),
                 "path": .string(request.url.path),
                 "status": .stringConvertible(response.status.code),
-                "duration_ms": .string(String(format: "%.2f", durationMs))
+                "duration_ms": .string(String(format: "%.2f", durationMs)),
+                "response_bytes": .stringConvertible(responseBytes)
                 ]
         )
         response.headers.replaceOrAdd(name: "X-Request-Id", value: requestId)
