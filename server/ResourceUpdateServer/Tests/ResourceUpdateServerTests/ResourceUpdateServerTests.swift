@@ -14,6 +14,36 @@ struct ResourceUpdateServerTests {
     private let signingKeyId = "test-key-active"
     private let signingSecondaryKeyId = "test-key-legacy"
 
+    @Test("OpenAPI spec and Swagger UI are exposed")
+    func documentationRoutes() async throws {
+        try await withConfiguredApp { app in
+            try await app.testing().test(.GET, "openapi.yaml", afterResponse: { res async in
+                #expect(res.status == .ok)
+                #expect(res.headers.contentType?.description.contains("application/yaml") == true)
+                let body = String(buffer: res.body)
+                #expect(body.contains("openapi: 3.0.3"))
+                #expect(body.contains("/v1/updates/{appId}:"))
+            })
+
+            try await app.testing().test(.GET, "docs", afterResponse: { res async in
+                #expect(res.status == .ok)
+                #expect(res.headers.contentType?.description.contains("text/html") == true)
+                let body = String(buffer: res.body)
+                #expect(body.contains("SwaggerUIBundle"))
+                #expect(body.contains("/openapi.yaml"))
+            })
+        }
+    }
+
+    @Test("Favicon route does not return 404")
+    func faviconRoute() async throws {
+        try await withConfiguredApp { app in
+            try await app.testing().test(.GET, "favicon.ico", afterResponse: { res async in
+                #expect(res.status == .noContent)
+            })
+        }
+    }
+
     @Test("POST + GET latest manifest returns saved manifest")
     func publishAndReadLatestManifest() async throws {
         try await withConfiguredApp { app in

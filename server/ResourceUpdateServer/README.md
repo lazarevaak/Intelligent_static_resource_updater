@@ -115,6 +115,11 @@ swift test
 
 Base path: `/v1`
 
+Swagger/OpenAPI:
+- `GET /openapi.yaml` — статическая OpenAPI 3.0.3 спецификация
+- `GET /docs` — Swagger UI поверх `openapi.yaml`
+- `GET /docs` использует `swagger-ui-dist` с CDN, сама спецификация лежит локально в `Public/openapi.yaml`
+
 ### 1) GET signing keys
 
 `GET /v1/keys`

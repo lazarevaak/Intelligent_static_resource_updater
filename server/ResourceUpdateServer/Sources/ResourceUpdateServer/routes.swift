@@ -1,3 +1,4 @@
+import Foundation
 import Vapor
 
 func makeArtifactStorage(app: Application, config: ServerConfig) throws -> any ArtifactStorage {
@@ -30,6 +31,10 @@ func routes(
     )
 
     app.get { _ in "Серв запущен все работает" }
+    app.get("favicon.ico") { _ in
+        Response(status: .noContent)
+    }
+    try registerDocumentationRoutes(app)
     if includeMetricsRoutes {
         try registerMetricsRoutes(app, config: config)
     }
@@ -46,6 +51,57 @@ func routes(
     v1.post("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", "upload", use: manifestController.uploadPatch)
     v1.get("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", use: manifestController.getPatch)
     v1.get("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", "meta", use: manifestController.getPatchMeta)
+}
+
+func registerDocumentationRoutes(_ app: Application) throws {
+    let specPath = app.directory.publicDirectory + "openapi.yaml"
+
+    app.get("openapi.yaml") { _ async throws -> Response in
+        guard FileManager.default.fileExists(atPath: specPath) else {
+            throw Abort(.notFound, reason: "openapi spec not found")
+        }
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: specPath))
+        let response = Response(status: .ok, body: .init(data: data))
+        response.headers.replaceOrAdd(name: .contentType, value: "application/yaml; charset=utf-8")
+        return response
+    }
+
+    app.get("docs") { _ -> Response in
+        let html = """
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Resource Update Server API Docs</title>
+            <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+            <style>
+              html { box-sizing: border-box; overflow-y: scroll; }
+              *, *:before, *:after { box-sizing: inherit; }
+              body { margin: 0; background: #fafafa; }
+            </style>
+          </head>
+          <body>
+            <div id="swagger-ui"></div>
+            <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
+            <script>
+              window.ui = SwaggerUIBundle({
+                url: '/openapi.yaml',
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [SwaggerUIBundle.presets.apis],
+                layout: 'BaseLayout'
+              });
+            </script>
+          </body>
+        </html>
+        """
+
+        let response = Response(status: .ok, body: .init(string: html))
+        response.headers.replaceOrAdd(name: .contentType, value: "text/html; charset=utf-8")
+        return response
+    }
 }
 
 func registerMetricsRoutes(_ app: Application, config: ServerConfig) throws {
