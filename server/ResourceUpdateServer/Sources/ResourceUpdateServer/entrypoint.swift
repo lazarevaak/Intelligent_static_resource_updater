@@ -23,8 +23,28 @@ enum Entrypoint {
 
         var env = try Environment.detect()
         try LoggingSystem.bootstrap(from: &env)
-        
+        let config = try ServerConfig.fromEnvironment()
+        let sharedMetricsCollector = APIMetricsCollector()
         let app = try await Application.make(env)
+        var metricsApp: Application?
+        if let listener = config.metrics.listener {
+            let internalMetricsApp = try await Application.make(env)
+            internalMetricsApp.http.server.configuration.hostname = listener.host
+            internalMetricsApp.http.server.configuration.port = listener.port
+            try await configureMetricsApplication(
+                internalMetricsApp,
+                config: config,
+                metricsCollector: sharedMetricsCollector
+            )
+            internalMetricsApp.logger.info(
+                "metrics_listener_configured",
+                metadata: [
+                    "host": .string(listener.host),
+                    "port": .stringConvertible(listener.port)
+                ]
+            )
+            metricsApp = internalMetricsApp
+        }
 
         // This attempts to install NIO as the Swift Concurrency global executor.
         // You can enable it if you'd like to reduce the amount of context switching between NIO and Swift Concurrency.
@@ -34,13 +54,30 @@ enum Entrypoint {
         // app.logger.debug("Tried to install SwiftNIO's EventLoopGroup as Swift's global concurrency executor", metadata: ["success": .stringConvertible(executorTakeoverSuccess)])
         
         do {
-            try await configure(app)
-            try await app.execute()
+            try await configurePublicApplication(
+                app,
+                config: config,
+                metricsCollector: sharedMetricsCollector,
+                includeMetricsRoutes: metricsApp == nil
+            )
+
+            if let metricsApp {
+                async let publicServer: Void = app.execute()
+                async let internalMetricsServer: Void = metricsApp.execute()
+                _ = try await (publicServer, internalMetricsServer)
+            } else {
+                try await app.execute()
+            }
         } catch {
             app.logger.report(error: error)
+            if let metricsApp {
+                metricsApp.logger.report(error: error)
+            }
+            try? await metricsApp?.asyncShutdown()
             try? await app.asyncShutdown()
             throw error
         }
+        try await metricsApp?.asyncShutdown()
         try await app.asyncShutdown()
     }
 }

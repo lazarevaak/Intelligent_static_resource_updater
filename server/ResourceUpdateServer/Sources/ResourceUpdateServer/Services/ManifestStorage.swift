@@ -183,6 +183,25 @@ actor ManifestStorage {
             .sorted()
     }
 
+    func listAppIds() throws -> [String] {
+        guard FileManager.default.fileExists(atPath: baseDirectoryURL.path) else {
+            return []
+        }
+
+        let items = try FileManager.default.contentsOfDirectory(
+            at: baseDirectoryURL,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        )
+
+        return try items
+            .filter {
+                let values = try $0.resourceValues(forKeys: [.isDirectoryKey])
+                return values.isDirectory == true
+            }
+            .map(\.lastPathComponent)
+            .sorted()
+    }
+
     func buildPatchMeta(appId: String, fromVersion: String, toVersion: String) throws -> PatchMeta {
         let fromManifest = try load(appId: appId, version: fromVersion)
         let toManifest = try load(appId: appId, version: toVersion)

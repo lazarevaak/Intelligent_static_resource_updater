@@ -738,6 +738,147 @@ struct ResourceUpdateServerTests {
         }
     }
 
+    @Test("GET updates is rate limited per IP and appId")
+    func updatesRateLimit() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let version = "1.0.0"
+            try await publishManifest(app: app, appId: appId, version: version, manifest: makeEmptyManifest(version: version))
+
+            for _ in 0..<3 {
+                try await app.testing().test(
+                    .GET,
+                    "v1/updates/\(appId)?fromVersion=0.9.0&sdkVersion=1.0",
+                    beforeRequest: { req in
+                        req.headers.replaceOrAdd(name: "X-Forwarded-For", value: "198.51.100.10")
+                    },
+                    afterResponse: { res async in
+                        #expect(res.status == .ok)
+                    }
+                )
+            }
+
+            try await app.testing().test(
+                .GET,
+                "v1/updates/\(appId)?fromVersion=0.9.0&sdkVersion=1.0",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-Forwarded-For", value: "198.51.100.10")
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .tooManyRequests)
+                    #expect(res.headers.first(name: "Retry-After") != nil)
+                    let envelope = try? res.content.decode(ErrorEnvelope.self)
+                    #expect(envelope?.error.code == "too_many_requests")
+                    #expect(envelope?.error.message == "rate limit exceeded")
+                }
+            )
+        }
+    }
+
+    @Test("GET patch is rate limited per IP, appId and version pair")
+    func patchRateLimit() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let fromVersion = "1.0.0"
+            let toVersion = "1.1.0"
+
+            try await publishManifest(app: app, appId: appId, version: fromVersion, manifest: makeEmptyManifest(version: fromVersion))
+            try await publishManifest(app: app, appId: appId, version: toVersion, manifest: makeEmptyManifest(version: toVersion))
+
+            for _ in 0..<2 {
+                try await app.testing().test(
+                    .GET,
+                    "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)",
+                    beforeRequest: { req in
+                        req.headers.replaceOrAdd(name: "X-Forwarded-For", value: "198.51.100.11")
+                    },
+                    afterResponse: { res async in
+                        #expect(res.status == .ok)
+                    }
+                )
+            }
+
+            try await app.testing().test(
+                .GET,
+                "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-Forwarded-For", value: "198.51.100.11")
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .tooManyRequests)
+                    #expect(res.headers.first(name: "Retry-After") != nil)
+                    let envelope = try? res.content.decode(ErrorEnvelope.self)
+                    #expect(envelope?.error.code == "too_many_requests")
+                    #expect(envelope?.error.message == "rate limit exceeded")
+                }
+            )
+        }
+    }
+
+    @Test("Public app hides metrics routes when dedicated metrics listener is configured")
+    func publicAppHidesMetricsWhenDedicatedListenerConfigured() async throws {
+        let config = makeServerConfig(
+            metrics: .init(
+                token: metricsToken,
+                allowlist: [metricsAllowedIP],
+                listener: .init(host: "127.0.0.1", port: 9091)
+            )
+        )
+
+        try await withApp(configure: { app in
+            try await configurePublicApplication(
+                app,
+                config: config,
+                metricsCollector: APIMetricsCollector(),
+                includeMetricsRoutes: false
+            )
+        }, { app in
+            try await app.testing().test(.GET, "metrics", afterResponse: { res async in
+                #expect(res.status == .notFound)
+            })
+
+            try await app.testing().test(.GET, "v1/metrics", afterResponse: { res async in
+                #expect(res.status == .notFound)
+            })
+        })
+    }
+
+    @Test("Dedicated metrics app exposes metrics routes")
+    func dedicatedMetricsAppExposesMetrics() async throws {
+        let collector = APIMetricsCollector()
+        let config = makeServerConfig(
+            metrics: .init(
+                token: metricsToken,
+                allowlist: [metricsAllowedIP],
+                listener: .init(host: "127.0.0.1", port: 9091)
+            )
+        )
+
+        await collector.record(path: "/v1/manifest/demo", status: .ok, durationMs: 1.5, responseBytes: 128)
+
+        try await withApp(configure: { app in
+            try await configureMetricsApplication(
+                app,
+                config: config,
+                metricsCollector: collector
+            )
+        }, { app in
+            try await app.testing().test(
+                .GET,
+                "metrics",
+                beforeRequest: { req in
+                    req.headers.replaceOrAdd(name: "X-Metrics-Token", value: metricsToken)
+                    req.headers.replaceOrAdd(name: "X-Forwarded-For", value: metricsAllowedIP)
+                },
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    let body = String(buffer: res.body)
+                    #expect(body.contains(#"resource_update_api_requests_total{endpoint="manifest",status_class="2xx"} 1"#))
+                }
+            )
+        })
+    }
+
     @Test("POST patch upload with same request-id and different payload returns 409")
     func patchUploadIdempotencyConflict() async throws {
         try await withConfiguredApp { app in
@@ -1190,6 +1331,81 @@ struct ResourceUpdateServerTests {
         }
     }
 
+    @Test("Background cleanup worker cleans configured apps")
+    func backgroundCleanupWorkerRunOnce() async throws {
+        try await withTemporaryPublicDirectory { publicDirectory in
+            let artifactStorage = MockArtifactStorage()
+            let storage = ManifestStorage(publicDirectory: publicDirectory, artifactStorage: artifactStorage)
+            let logger = Logger(label: "background-cleanup-test")
+
+            let appA = "app-a-\(UUID().uuidString)"
+            let appB = "app-b-\(UUID().uuidString)"
+
+            for (appId, versions) in [(appA, ["1.0.0", "1.1.0", "1.2.0"]), (appB, ["2.0.0", "2.1.0", "2.2.0"])] {
+                for version in versions {
+                    _ = try await storage.save(
+                        makeEmptyManifest(version: version),
+                        appId: appId,
+                        version: version,
+                        overwrite: false,
+                        requestId: UUID().uuidString,
+                        payloadHash: UUID().uuidString
+                    )
+                }
+            }
+
+            let worker = BackgroundCleanupWorker(
+                storage: storage,
+                config: .init(intervalSeconds: 60, keepLast: 1, appIds: [appA, appB]),
+                logger: logger
+            )
+
+            await worker.runOnce()
+
+            let versionsA = try await storage.listVersions(appId: appA)
+            let versionsB = try await storage.listVersions(appId: appB)
+            #expect(versionsA.count == 1)
+            #expect(versionsB.count == 1)
+        }
+    }
+
+    @Test("Shared-file rate limit store shares counters across instances")
+    func sharedFileRateLimitStoreSharesCounters() async throws {
+        try await withTemporaryPublicDirectory { publicDirectory in
+            let sharedDirectory = URL(fileURLWithPath: publicDirectory, isDirectory: true)
+                .appendingPathComponent("shared-rate-limit", isDirectory: true)
+                .path
+            let first = try SharedFileRateLimitStore(directory: sharedDirectory)
+            let second = try SharedFileRateLimitStore(directory: sharedDirectory)
+            let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+            let firstResult = try await first.consume(
+                key: "updates:198.51.100.1:demoapp",
+                limit: 2,
+                windowSeconds: 60,
+                now: now
+            )
+            #expect(firstResult.allowed == true)
+
+            let secondResult = try await second.consume(
+                key: "updates:198.51.100.1:demoapp",
+                limit: 2,
+                windowSeconds: 60,
+                now: now
+            )
+            #expect(secondResult.allowed == true)
+
+            let thirdResult = try await first.consume(
+                key: "updates:198.51.100.1:demoapp",
+                limit: 2,
+                windowSeconds: 60,
+                now: now
+            )
+            #expect(thirdResult.allowed == false)
+            #expect(thirdResult.retryAfter > 0)
+        }
+    }
+
     @Test("Cleanup keeps latest N versions and removes old data")
     func cleanupKeepsLatestVersions() async throws {
         try await withTemporaryPublicDirectory { publicDirectory in
@@ -1295,6 +1511,37 @@ struct ResourceUpdateServerTests {
         )
     }
 
+    private func makeServerConfig(metrics: ServerConfig.MetricsConfig? = nil) -> ServerConfig {
+        ServerConfig(
+            publishToken: publishToken,
+            artifactBackend: .local,
+            s3: nil,
+            signing: .init(
+                activeKeyId: signingKeyId,
+                keys: [
+                    .init(
+                        keyId: signingKeyId,
+                        privateKeyBase64: signingPrimaryPrivateKeyBase64,
+                        createdAt: Date(timeIntervalSince1970: 0)
+                    ),
+                    .init(
+                        keyId: signingSecondaryKeyId,
+                        privateKeyBase64: signingSecondaryPrivateKeyBase64,
+                        createdAt: Date(timeIntervalSince1970: 1)
+                    )
+                ]
+            ),
+            metrics: metrics ?? .init(token: metricsToken, allowlist: [metricsAllowedIP], listener: nil),
+            rateLimit: .init(
+                backend: .memory,
+                updatesPerMinute: 3,
+                patchPerMinute: 2,
+                sharedDirectory: nil
+            ),
+            cleanup: nil
+        )
+    }
+
     private func publishManifest(app: Application, appId: String, version: String, manifest: Manifest) async throws {
         try await app.testing().test(
             .POST,
@@ -1314,6 +1561,8 @@ struct ResourceUpdateServerTests {
         setenv("CI_PUBLISH_TOKEN", publishToken, 1)
         setenv("METRICS_TOKEN", metricsToken, 1)
         setenv("METRICS_ALLOWLIST", metricsAllowedIP, 1)
+        setenv("RATE_LIMIT_UPDATES_PER_MINUTE", "3", 1)
+        setenv("RATE_LIMIT_PATCH_PER_MINUTE", "2", 1)
         setenv("SIGNING_KEYS_JSON", makeSigningKeysJSON(), 1)
         setenv("SIGNING_ACTIVE_KEY_ID", signingKeyId, 1)
         unsetenv("SIGNING_PRIVATE_KEY_BASE64")
