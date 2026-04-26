@@ -1,0 +1,891 @@
+openapi: 3.0.3
+info:
+  title: Resource Update Server API
+  version: 1.0.0
+  description: |
+    HTTP API для публикации и доставки статических ресурсов, манифестов и patch-артефактов
+    мобильным приложениям.
+servers:
+  - url: /
+tags:
+  - name: docs
+  - name: keys
+  - name: manifest
+  - name: updates
+  - name: resources
+  - name: patch
+  - name: metrics
+paths:
+  /openapi.yaml:
+    get:
+      tags: [docs]
+      summary: Получить OpenAPI-спеку
+      responses:
+        '200':
+          description: YAML-спецификация API
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /docs:
+    get:
+      tags: [docs]
+      summary: Swagger UI
+      description: HTML-страница Swagger UI. Для загрузки UI использует CDN swagger-ui-dist.
+      responses:
+        '200':
+          description: HTML с интерактивной документацией
+          content:
+            text/html:
+              schema:
+                type: string
+  /v1/keys:
+    get:
+      tags: [keys]
+      summary: Получить список публичных ключей подписи
+      responses:
+        '200':
+          description: Список ключей
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SigningPublicKey'
+  /v1/keys/{keyId}:
+    get:
+      tags: [keys]
+      summary: Получить публичный ключ по идентификатору
+      parameters:
+        - $ref: '#/components/parameters/KeyId'
+      responses:
+        '200':
+          description: Ключ найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SigningPublicKey'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /v1/manifest/{appId}/latest:
+    get:
+      tags: [manifest]
+      summary: Получить последний манифест приложения
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Последний манифест
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlLatest'
+            X-Manifest-SHA256:
+              $ref: '#/components/headers/ManifestSHA256'
+            X-Signature:
+              $ref: '#/components/headers/Signature'
+            X-Signature-Alg:
+              $ref: '#/components/headers/SignatureAlg'
+            X-Signature-Key-Id:
+              $ref: '#/components/headers/SignatureKeyId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Manifest'
+        '304':
+          $ref: '#/components/responses/NotModifiedLatest'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /v1/manifest/{appId}/version/{version}:
+    get:
+      tags: [manifest]
+      summary: Получить манифест по версии
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/Version'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Манифест найден
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlImmutable'
+            X-Manifest-SHA256:
+              $ref: '#/components/headers/ManifestSHA256'
+            X-Signature:
+              $ref: '#/components/headers/Signature'
+            X-Signature-Alg:
+              $ref: '#/components/headers/SignatureAlg'
+            X-Signature-Key-Id:
+              $ref: '#/components/headers/SignatureKeyId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Manifest'
+        '304':
+          $ref: '#/components/responses/NotModifiedImmutable'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    post:
+      tags: [manifest]
+      summary: Опубликовать манифест версии
+      security:
+        - bearerAuth: []
+        - ciTokenHeader: []
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/Version'
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Manifest'
+      responses:
+        '201':
+          description: Манифест создан
+        '200':
+          description: Идемпотентный повтор того же запроса
+        '400':
+          $ref: '#/components/responses/ErrorBadRequest'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '409':
+          $ref: '#/components/responses/ErrorConflict'
+  /v1/updates/{appId}:
+    get:
+      tags: [updates]
+      summary: Получить решение об обновлении
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/FromVersionQuery'
+        - $ref: '#/components/parameters/SdkVersionQuery'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Решение об обновлении
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlUpdates'
+            X-Updates-SHA256:
+              description: SHA-256 от raw JSON body
+              schema:
+                type: string
+                pattern: '^[a-f0-9]{64}$'
+            X-Updates-Signature:
+              description: Подпись raw JSON body
+              schema:
+                type: string
+            X-Updates-Signature-Alg:
+              $ref: '#/components/headers/SignatureAlg'
+            X-Updates-Signature-Key-Id:
+              $ref: '#/components/headers/SignatureKeyId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatesResponse'
+        '304':
+          $ref: '#/components/responses/NotModifiedUpdates'
+        '429':
+          $ref: '#/components/responses/ErrorTooManyRequests'
+  /v1/resource/{appId}/upload:
+    post:
+      tags: [resources]
+      summary: Загрузить ресурс
+      security:
+        - bearerAuth: []
+        - ciTokenHeader: []
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/ResourcePathHeader'
+        - $ref: '#/components/parameters/ResourceHashHeader'
+        - $ref: '#/components/parameters/ResourceSizeHeader'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: Ресурс загружен впервые
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '200':
+          description: Ресурс уже существовал
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          $ref: '#/components/responses/ErrorBadRequest'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+  /v1/resource/{appId}/hash/{hash}:
+    get:
+      tags: [resources]
+      summary: Скачать ресурс по hash
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/Hash'
+      responses:
+        '200':
+          description: Бинарный ресурс
+          headers:
+            X-Resource-Hash:
+              description: SHA-256 ресурса
+              schema:
+                type: string
+                pattern: '^[a-f0-9]{64}$'
+            X-Resource-Size:
+              description: Размер ресурса в байтах
+              schema:
+                type: integer
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /v1/patch/{appId}/from/{fromVersion}/to/{toVersion}/upload:
+    post:
+      tags: [patch]
+      summary: Загрузить готовый patch-артефакт
+      security:
+        - bearerAuth: []
+        - ciTokenHeader: []
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/FromVersionPath'
+        - $ref: '#/components/parameters/ToVersionPath'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/PatchHashHeader'
+        - $ref: '#/components/parameters/PatchSizeHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchArtifact'
+      responses:
+        '201':
+          description: Patch сохранен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '200':
+          description: Идемпотентный повтор того же запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          $ref: '#/components/responses/ErrorBadRequest'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '409':
+          $ref: '#/components/responses/ErrorConflict'
+  /v1/patch/{appId}/from/{fromVersion}/to/{toVersion}:
+    get:
+      tags: [patch]
+      summary: Скачать patch-артефакт
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/FromVersionPath'
+        - $ref: '#/components/parameters/ToVersionPath'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Patch-артефакт
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlImmutable'
+            Content-Disposition:
+              description: Имя файла patch-артефакта
+              schema:
+                type: string
+            X-Patch-SHA256:
+              description: SHA-256 от raw patch body
+              schema:
+                type: string
+                pattern: '^[a-f0-9]{64}$'
+            X-Signature:
+              $ref: '#/components/headers/Signature'
+            X-Signature-Alg:
+              $ref: '#/components/headers/SignatureAlg'
+            X-Signature-Key-Id:
+              $ref: '#/components/headers/SignatureKeyId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatchArtifact'
+        '304':
+          $ref: '#/components/responses/NotModifiedImmutable'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+        '429':
+          $ref: '#/components/responses/ErrorTooManyRequests'
+  /v1/patch/{appId}/from/{fromVersion}/to/{toVersion}/meta:
+    get:
+      tags: [patch]
+      summary: Получить метаданные patch без скачивания артефакта
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/FromVersionPath'
+        - $ref: '#/components/parameters/ToVersionPath'
+      responses:
+        '200':
+          description: Patch metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatchMeta'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /v1/metrics:
+    get:
+      tags: [metrics]
+      summary: Получить JSON-снимок API-метрик
+      description: Маршрут доступен только при включенной защите метрик. Может быть вынесен на отдельный listener.
+      security:
+        - bearerAuth: []
+        - metricsTokenHeader: []
+      responses:
+        '200':
+          description: Снимок метрик
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIMetricsSnapshot'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /metrics:
+    get:
+      tags: [metrics]
+      summary: Получить Prometheus export
+      description: Маршрут доступен только при включенной защите метрик. Может быть вынесен на отдельный listener.
+      security:
+        - bearerAuth: []
+        - metricsTokenHeader: []
+      responses:
+        '200':
+          description: Prometheus exposition format
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
+    ciTokenHeader:
+      type: apiKey
+      in: header
+      name: X-CI-Token
+    metricsTokenHeader:
+      type: apiKey
+      in: header
+      name: X-Metrics-Token
+  parameters:
+    AppId:
+      name: appId
+      in: path
+      required: true
+      schema:
+        type: string
+    Version:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: string
+    KeyId:
+      name: keyId
+      in: path
+      required: true
+      schema:
+        type: string
+    Hash:
+      name: hash
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-f0-9]{64}$'
+    FromVersionPath:
+      name: fromVersion
+      in: path
+      required: true
+      schema:
+        type: string
+    ToVersionPath:
+      name: toVersion
+      in: path
+      required: true
+      schema:
+        type: string
+    FromVersionQuery:
+      name: fromVersion
+      in: query
+      required: false
+      schema:
+        type: string
+    SdkVersionQuery:
+      name: sdkVersion
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Версия клиентского SDK, например `2.1`
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      schema:
+        type: string
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Идемпотентный идентификатор запроса.
+    ResourcePathHeader:
+      name: X-Resource-Path
+      in: header
+      required: true
+      schema:
+        type: string
+    ResourceHashHeader:
+      name: X-Resource-Hash
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-f0-9]{64}$'
+    ResourceSizeHeader:
+      name: X-Resource-Size
+      in: header
+      required: false
+      schema:
+        type: integer
+    PatchHashHeader:
+      name: X-Patch-SHA256
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-f0-9]{64}$'
+    PatchSizeHeader:
+      name: X-Patch-Size
+      in: header
+      required: false
+      schema:
+        type: integer
+  headers:
+    ETag:
+      description: ETag текущего представления
+      schema:
+        type: string
+    CacheControlLatest:
+      description: public, max-age=30, must-revalidate
+      schema:
+        type: string
+    CacheControlUpdates:
+      description: public, max-age=15, must-revalidate
+      schema:
+        type: string
+    CacheControlImmutable:
+      description: public, max-age=31536000, immutable
+      schema:
+        type: string
+    ManifestSHA256:
+      description: SHA-256 от raw manifest body
+      schema:
+        type: string
+        pattern: '^[a-f0-9]{64}$'
+    Signature:
+      description: Base64-подпись тела ответа
+      schema:
+        type: string
+    SignatureAlg:
+      description: Алгоритм подписи
+      schema:
+        type: string
+        example: ed25519
+    SignatureKeyId:
+      description: Идентификатор ключа подписи
+      schema:
+        type: string
+  responses:
+    ErrorBadRequest:
+      description: Невалидный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ErrorUnauthorized:
+      description: Ошибка аутентификации
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ErrorForbidden:
+      description: Доступ запрещен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ErrorNotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ErrorConflict:
+      description: Конфликт идемпотентности или состояния
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ErrorTooManyRequests:
+      description: Превышен rate limit
+      headers:
+        Retry-After:
+          description: Через сколько секунд можно повторить запрос
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotModifiedLatest:
+      description: Контент не изменился
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControlLatest'
+    NotModifiedUpdates:
+      description: Контент не изменился
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControlUpdates'
+    NotModifiedImmutable:
+      description: Контент не изменился
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControlImmutable'
+  schemas:
+    Manifest:
+      type: object
+      required: [schemaVersion, minSdkVersion, version, generatedAt, resources]
+      properties:
+        schemaVersion:
+          type: integer
+          minimum: 1
+        minSdkVersion:
+          type: string
+        version:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceEntry'
+    ResourceEntry:
+      type: object
+      required: [path, hash, size]
+      properties:
+        path:
+          type: string
+        hash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        size:
+          type: integer
+          minimum: 0
+    UpdatesResponse:
+      type: object
+      required: [decision, appId, latestVersion, reason, manifest]
+      properties:
+        decision:
+          type: string
+          enum: [no-update, manifest-only, patch]
+        appId:
+          type: string
+        fromVersion:
+          type: string
+          nullable: true
+        latestVersion:
+          type: string
+        sdkVersion:
+          type: string
+          nullable: true
+        reason:
+          type: string
+        manifest:
+          $ref: '#/components/schemas/SignedObjectDescriptor'
+        patch:
+          allOf:
+            - $ref: '#/components/schemas/SignedObjectDescriptor'
+          nullable: true
+    SignedObjectDescriptor:
+      type: object
+      required: [url, sha256, signature, signatureAlgorithm, signatureKeyId, size]
+      properties:
+        url:
+          type: string
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        signature:
+          type: string
+        signatureAlgorithm:
+          type: string
+          example: ed25519
+        signatureKeyId:
+          type: string
+        size:
+          type: integer
+          minimum: 0
+    PatchArtifact:
+      type: object
+      required: [schemaVersion, appId, fromVersion, toVersion, generatedAt, operations]
+      properties:
+        schemaVersion:
+          type: integer
+        appId:
+          type: string
+        fromVersion:
+          type: string
+        toVersion:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatchOperation'
+    PatchOperation:
+      type: object
+      required: [op, path]
+      properties:
+        op:
+          type: string
+          enum: [add, remove, replace]
+        path:
+          type: string
+        hash:
+          type: string
+          nullable: true
+        size:
+          type: integer
+          nullable: true
+        dataBase64:
+          type: string
+          nullable: true
+        delta:
+          allOf:
+            - $ref: '#/components/schemas/BinaryDeltaPatch'
+          nullable: true
+    BinaryDeltaPatch:
+      type: object
+      required: [algorithm, baseHash, baseSize, targetHash, targetSize, operations]
+      properties:
+        algorithm:
+          type: string
+          example: splice-v1
+        baseHash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        baseSize:
+          type: integer
+        targetHash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        targetSize:
+          type: integer
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/BinaryDeltaOperation'
+    BinaryDeltaOperation:
+      type: object
+      required: [offset, deleteLength, dataBase64]
+      properties:
+        offset:
+          type: integer
+          minimum: 0
+        deleteLength:
+          type: integer
+          minimum: 0
+        dataBase64:
+          type: string
+    PatchMeta:
+      type: object
+      required: [appId, fromVersion, toVersion, generatedAt, added, changed, removed]
+      properties:
+        appId:
+          type: string
+        fromVersion:
+          type: string
+        toVersion:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        added:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceEntry'
+        changed:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChangedResource'
+        removed:
+          type: array
+          items:
+            type: string
+    ChangedResource:
+      type: object
+      required: [path, fromHash, fromSize, toHash, size]
+      properties:
+        path:
+          type: string
+        fromHash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        fromSize:
+          type: integer
+          minimum: 0
+        toHash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        size:
+          type: integer
+          minimum: 0
+    SigningPublicKey:
+      type: object
+      required: [keyId, alg, publicKeyBase64, createdAt, active]
+      properties:
+        keyId:
+          type: string
+        alg:
+          type: string
+          example: ed25519
+        publicKeyBase64:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        active:
+          type: boolean
+    UploadResponse:
+      type: object
+      required: [hash, size]
+      properties:
+        hash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        size:
+          type: integer
+          minimum: 0
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetails'
+    ErrorDetails:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+    APIMetricsSnapshot:
+      type: object
+      required: [generatedAt, endpoints]
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        endpoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIMetricsEndpointSnapshot'
+    APIMetricsEndpointSnapshot:
+      type: object
+      required: [endpoint, totalRequests, status2xx, status4xx, status5xx, status304, notModifiedRatio, averageResponseBytes, latencyMs]
+      properties:
+        endpoint:
+          type: string
+          enum: [manifest, patch, updates]
+        totalRequests:
+          type: integer
+        status2xx:
+          type: integer
+        status4xx:
+          type: integer
+        status5xx:
+          type: integer
+        status304:
+          type: integer
+        notModifiedRatio:
+          type: number
+          format: double
+        averageResponseBytes:
+          type: number
+          format: double
+        latencyMs:
+          $ref: '#/components/schemas/APIMetricsLatencySnapshot'
+    APIMetricsLatencySnapshot:
+      type: object
+      required: [p50, p95, p99]
+      properties:
+        p50:
+          type: number
+          format: double
+        p95:
+          type: number
+          format: double
+        p99:
+          type: number
+          format: double
