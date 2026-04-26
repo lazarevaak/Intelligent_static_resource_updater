@@ -1,6 +1,6 @@
 import Vapor
 
-func routes(_ app: Application, config: ServerConfig) throws {
+func makeArtifactStorage(app: Application, config: ServerConfig) throws -> any ArtifactStorage {
     let artifactStorage: any ArtifactStorage
     switch config.artifactBackend {
     case .local:
@@ -13,6 +13,15 @@ func routes(_ app: Application, config: ServerConfig) throws {
         app.lifecycle.use(S3StorageLifecycle(storage: s3Storage))
         artifactStorage = s3Storage
     }
+    return artifactStorage
+}
+
+func routes(
+    _ app: Application,
+    config: ServerConfig,
+    includeMetricsRoutes: Bool,
+    artifactStorage: any ArtifactStorage
+) throws {
     let manifestController = ManifestController(
         publicDirectory: app.directory.publicDirectory,
         artifactStorage: artifactStorage,
@@ -21,6 +30,25 @@ func routes(_ app: Application, config: ServerConfig) throws {
     )
 
     app.get { _ in "Серв запущен все работает" }
+    if includeMetricsRoutes {
+        try registerMetricsRoutes(app, config: config)
+    }
+
+    let v1 = app.grouped("v1")
+    v1.get("keys", use: manifestController.getSigningKeys)
+    v1.get("keys", ":keyId", use: manifestController.getSigningKey)
+    v1.get("manifest", ":appId", "latest", use: manifestController.getLatestManifest)
+    v1.get("manifest", ":appId", "version", ":version", use: manifestController.getManifest)
+    v1.get("updates", ":appId", use: manifestController.getUpdates)
+    v1.post("manifest", ":appId", "version", ":version", use: manifestController.updateManifest)
+    v1.post("resource", ":appId", "upload", use: manifestController.uploadResource)
+    v1.get("resource", ":appId", "hash", ":hash", use: manifestController.getResource)
+    v1.post("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", "upload", use: manifestController.uploadPatch)
+    v1.get("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", use: manifestController.getPatch)
+    v1.get("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", "meta", use: manifestController.getPatchMeta)
+}
+
+func registerMetricsRoutes(_ app: Application, config: ServerConfig) throws {
     app.get("metrics") { req async throws -> Response in
         try authorizeMetricsAccess(req: req, config: config)
         let body = await req.application.apiMetricsCollector.prometheusText()
@@ -33,17 +61,6 @@ func routes(_ app: Application, config: ServerConfig) throws {
         try authorizeMetricsAccess(req: req, config: config)
         return await req.application.apiMetricsCollector.snapshot()
     }
-    v1.get("keys", use: manifestController.getSigningKeys)
-    v1.get("keys", ":keyId", use: manifestController.getSigningKey)
-    v1.get("manifest", ":appId", "latest", use: manifestController.getLatestManifest)
-    v1.get("manifest", ":appId", "version", ":version", use: manifestController.getManifest)
-    v1.get("updates", ":appId", use: manifestController.getUpdates)
-    v1.post("manifest", ":appId", "version", ":version", use: manifestController.updateManifest)
-    v1.post("resource", ":appId", "upload", use: manifestController.uploadResource)
-    v1.get("resource", ":appId", "hash", ":hash", use: manifestController.getResource)
-    v1.post("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", "upload", use: manifestController.uploadPatch)
-    v1.get("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", use: manifestController.getPatch)
-    v1.get("patch", ":appId", "from", ":fromVersion", "to", ":toVersion", "meta", use: manifestController.getPatchMeta)
 }
 
 private func authorizeMetricsAccess(req: Request, config: ServerConfig) throws {
@@ -66,15 +83,4 @@ private func authorizeMetricsAccess(req: Request, config: ServerConfig) throws {
             throw Abort(.forbidden, reason: "metrics access denied for client IP")
         }
     }
-}
-
-private func clientIPAddress(req: Request) -> String? {
-    if let forwarded = req.headers.first(name: "X-Forwarded-For")?
-        .split(separator: ",")
-        .first?
-        .trimmingCharacters(in: .whitespacesAndNewlines),
-       !forwarded.isEmpty {
-        return forwarded
-    }
-    return req.remoteAddress?.ipAddress
 }

@@ -54,6 +54,11 @@ swift run ResourceUpdateServer cleanup \
   --public-dir ./Public
 ```
 
+Background cleanup scheduler:
+- runs inside the public server process
+- periodically applies the same retention policy as CLI `cleanup`
+- keeps latest `N` versions, removes obsolete patch artifacts and unused resource binaries
+
 Optional flags:
 - `--min-sdk-version` (default: `1.0`)
 - `--request-id` (default: random UUID)
@@ -77,6 +82,15 @@ Optional environment:
   - `SIGNING_KEY_ID` (optional, default: `main`)
 - `METRICS_TOKEN` (optional, required to enable secured metrics access by token)
 - `METRICS_ALLOWLIST` (optional, comma-separated client IP allowlist for metrics, e.g. `127.0.0.1,::1,10.0.0.5`)
+- `METRICS_BIND_HOST` (optional, default: `127.0.0.1`, used together with `METRICS_PORT`)
+- `METRICS_PORT` (optional; if set, metrics endpoints are moved to a dedicated listener and hidden from the public app)
+- `RATE_LIMIT_BACKEND` = `memory` | `shared-file` (default: `memory`)
+- `RATE_LIMIT_UPDATES_PER_MINUTE` (optional, default: `60`, set `0` to disable)
+- `RATE_LIMIT_PATCH_PER_MINUTE` (optional, default: `20`, set `0` to disable)
+- `RATE_LIMIT_SHARED_DIR` (optional; used by `shared-file` backend, defaults to `Public/rate-limit-store`)
+- `CLEANUP_INTERVAL_SECONDS` (optional; if set to `> 0`, enables periodic background cleanup)
+- `CLEANUP_KEEP_LAST` (optional, default: `3`)
+- `CLEANUP_APP_IDS` (optional, comma-separated app ids; if omitted, cleanup scans all apps under `Public/manifests`)
 
 ## Test
 
@@ -219,9 +233,26 @@ Cache headers and conditional GET:
 - `GET /v1/patch/:appId/from/:fromVersion/to/:toVersion`: `Cache-Control: public, max-age=31536000, immutable`
 - all endpoints above return `ETag`, support `If-None-Match`, and may return `304 Not Modified`.
 
+Rate limiting:
+- `GET /v1/updates/:appId` is limited per `clientIP + appId`
+- `GET /v1/patch/:appId/from/:fromVersion/to/:toVersion` is limited per `clientIP + appId + fromVersion + toVersion`
+- exceed limit => `429 Too Many Requests`
+- response includes `Retry-After`
+- error body stays in the standard JSON envelope format
+- backend is configurable:
+  - `memory`: per-process in-memory counters
+  - `shared-file`: counters shared through filesystem-backed store for multiple server processes on the same host/shared volume
+
 ### 5) GET API metrics
 
 `GET /v1/metrics`
+
+By default this route is served from the main application listener.
+
+If `METRICS_PORT` is set:
+- `/metrics` and `/v1/metrics` are removed from the public listener
+- a dedicated metrics-only listener is started on `METRICS_BIND_HOST:METRICS_PORT`
+- only metrics routes are exposed there
 
 Requires metrics access:
 - `X-Metrics-Token: <token>` or `Authorization: Bearer <token>` when `METRICS_TOKEN` is set

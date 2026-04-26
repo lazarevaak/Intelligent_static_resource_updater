@@ -7,6 +7,8 @@ struct ServerConfig {
     let s3: S3Config?
     let signing: SigningConfig
     let metrics: MetricsConfig
+    let rateLimit: RateLimitConfig
+    let cleanup: CleanupConfig?
 
     enum ArtifactBackend: String {
         case local
@@ -36,10 +38,34 @@ struct ServerConfig {
     struct MetricsConfig {
         let token: String?
         let allowlist: Set<String>
+        let listener: ListenerConfig?
+
+        struct ListenerConfig {
+            let host: String
+            let port: Int
+        }
 
         var isEnabled: Bool {
             token != nil || !allowlist.isEmpty
         }
+    }
+
+    struct RateLimitConfig {
+        enum Backend: String {
+            case memory
+            case sharedFile = "shared-file"
+        }
+
+        let backend: Backend
+        let updatesPerMinute: Int
+        let patchPerMinute: Int
+        let sharedDirectory: String?
+    }
+
+    struct CleanupConfig {
+        let intervalSeconds: Int
+        let keepLast: Int
+        let appIds: [String]?
     }
 
     static func fromEnvironment() throws -> ServerConfig {
@@ -70,20 +96,37 @@ struct ServerConfig {
             s3Config = nil
         }
         let signingConfig = try makeSigningConfig()
-        let metricsConfig = makeMetricsConfig()
+        let metricsConfig = try makeMetricsConfig()
+        let rateLimitConfig = try makeRateLimitConfig()
+        let cleanupConfig = makeCleanupConfig()
         return ServerConfig(
             publishToken: token,
             artifactBackend: backend,
             s3: s3Config,
             signing: signingConfig,
-            metrics: metricsConfig
+            metrics: metricsConfig,
+            rateLimit: rateLimitConfig,
+            cleanup: cleanupConfig
         )
     }
 
-    private static func makeMetricsConfig() -> MetricsConfig {
+    private static func makeMetricsConfig() throws -> MetricsConfig {
         let token = Environment.get("METRICS_TOKEN")?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedToken = (token?.isEmpty == false) ? token : nil
+
+        let listener: MetricsConfig.ListenerConfig?
+        if let rawPort = Environment.get("METRICS_PORT")?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawPort.isEmpty {
+            guard let port = Int(rawPort), port > 0 else {
+                throw Abort(.internalServerError, reason: "METRICS_PORT must be a positive integer")
+            }
+            let host = Environment.get("METRICS_BIND_HOST")?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            listener = .init(host: (host?.isEmpty == false) ? host! : "127.0.0.1", port: port)
+        } else {
+            listener = nil
+        }
 
         let allowlist = Set(
             (Environment.get("METRICS_ALLOWLIST") ?? "")
@@ -92,7 +135,44 @@ struct ServerConfig {
                 .filter { !$0.isEmpty }
         )
 
-        return MetricsConfig(token: normalizedToken, allowlist: allowlist)
+        return MetricsConfig(token: normalizedToken, allowlist: allowlist, listener: listener)
+    }
+
+    private static func makeRateLimitConfig() throws -> RateLimitConfig {
+        let backendValue = Environment.get("RATE_LIMIT_BACKEND")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "memory"
+        guard let backend = RateLimitConfig.Backend(rawValue: backendValue) else {
+            throw Abort(.internalServerError, reason: "RATE_LIMIT_BACKEND must be one of: memory, shared-file")
+        }
+        let updatesPerMinute = max(Int(Environment.get("RATE_LIMIT_UPDATES_PER_MINUTE") ?? "") ?? 60, 0)
+        let patchPerMinute = max(Int(Environment.get("RATE_LIMIT_PATCH_PER_MINUTE") ?? "") ?? 20, 0)
+        let sharedDirectory = Environment.get("RATE_LIMIT_SHARED_DIR")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return RateLimitConfig(
+            backend: backend,
+            updatesPerMinute: updatesPerMinute,
+            patchPerMinute: patchPerMinute,
+            sharedDirectory: sharedDirectory?.isEmpty == false ? sharedDirectory : nil
+        )
+    }
+
+    private static func makeCleanupConfig() -> CleanupConfig? {
+        let intervalSeconds = Int(Environment.get("CLEANUP_INTERVAL_SECONDS") ?? "") ?? 0
+        guard intervalSeconds > 0 else {
+            return nil
+        }
+
+        let keepLast = max(Int(Environment.get("CLEANUP_KEEP_LAST") ?? "") ?? 3, 1)
+        let appIds = (Environment.get("CLEANUP_APP_IDS") ?? "")
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return CleanupConfig(
+            intervalSeconds: intervalSeconds,
+            keepLast: keepLast,
+            appIds: appIds.isEmpty ? nil : appIds
+        )
     }
 
     private static func makeSigningConfig() throws -> SigningConfig {
