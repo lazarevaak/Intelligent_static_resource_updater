@@ -83,6 +83,7 @@ public final class LocalResourceStore: @unchecked Sendable {
                 try apply(operation: operation)
             }
 
+            try pruneUnexpectedResources(keeping: Set(targetManifest.resources.map { normalizedRelativePath($0.path) }))
             try validateInstalledResources(match: targetManifest)
             try persist(state: State(currentVersion: targetManifest.version, manifest: targetManifest))
             try removeBackup(at: backupURL)
@@ -287,9 +288,7 @@ public final class LocalResourceStore: @unchecked Sendable {
     }
 
     private func validateInstalledResources(match manifest: Manifest) throws {
-        var expectedPaths = Set<String>()
         for resource in manifest.resources {
-            expectedPaths.insert(normalizedRelativePath(resource.path))
             let url = try resolvedResourceURL(forRelativePath: resource.path)
             guard FileManager.default.fileExists(atPath: url.path) else {
                 throw ResourceUpdaterError.resourceNotFound(resource.path)
@@ -298,10 +297,12 @@ public final class LocalResourceStore: @unchecked Sendable {
             try validate(data: data, expectedHash: resource.hash, expectedSize: resource.size)
         }
 
+    }
+
+    private func pruneUnexpectedResources(keeping expectedPaths: Set<String>) throws {
         let actualPaths = try collectStoredResourcePaths()
-        let extraPaths = actualPaths.subtracting(expectedPaths)
-        if !extraPaths.isEmpty {
-            throw ResourceUpdaterError.invalidPatchOperation("unexpected resources after apply")
+        for extraPath in actualPaths.subtracting(expectedPaths) {
+            try removeResource(at: extraPath)
         }
     }
 
