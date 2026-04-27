@@ -38,15 +38,15 @@ env:
 jobs:
   server_tests:
     name: Server Tests
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Swift
-        uses: swift-actions/setup-swift@v2
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
         with:
-          swift-version: "6.2"
+          xcode-version: "16.2"
 
       - name: Show Swift version
         run: swift --version
@@ -57,7 +57,7 @@ jobs:
 
   sdk_tests:
     name: SDK Tests
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,7 +76,7 @@ jobs:
 
   resource_validate:
     name: Validate Resources
-    runs-on: macos-14
+    runs-on: macos-15
     needs:
       - server_tests
       - sdk_tests
@@ -84,10 +84,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Swift
-        uses: swift-actions/setup-swift@v2
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
         with:
-          swift-version: "6.2"
+          xcode-version: "16.2"
 
       - name: Show Swift version
         run: swift --version
@@ -137,7 +137,7 @@ jobs:
 
   publish_resources:
     name: Publish Resources
-    runs-on: macos-14
+    runs-on: macos-15
     needs:
       - resource_validate
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_resources == 'true' }}
@@ -145,10 +145,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Swift
-        uses: swift-actions/setup-swift@v2
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
         with:
-          swift-version: "6.2"
+          xcode-version: "16.2"
 
       - name: Show Swift version
         run: swift --version
@@ -202,7 +202,7 @@ jobs:
 
   publish_patches:
     name: Publish Patches
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     needs:
       - publish_resources
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_patches == 'true' }}
