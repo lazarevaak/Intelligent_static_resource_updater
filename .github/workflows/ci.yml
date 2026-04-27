@@ -51,6 +51,16 @@ jobs:
       - name: Show Swift version
         run: swift --version
 
+      - name: Patch swift-configuration for CI
+        working-directory: ${{ env.SERVER_DIR }}
+        run: |
+          set -eu
+          swift package resolve
+          CONFIG_FILE="$(find .build/checkouts/swift-configuration -path '*/Sources/Configuration/Providers/Files/FileProvider.swift' | head -n 1)"
+          if [ -n "${CONFIG_FILE:-}" ] && [ -f "$CONFIG_FILE" ]; then
+            perl -0pi -e 's/data: fileContents!\.bytes,/data: Array(fileContents!),/g' "$CONFIG_FILE"
+          fi
+
       - name: Run server tests
         working-directory: ${{ env.SERVER_DIR }}
         run: swift test
@@ -91,6 +101,16 @@ jobs:
 
       - name: Show Swift version
         run: swift --version
+
+      - name: Patch swift-configuration for CI
+        working-directory: ${{ env.SERVER_DIR }}
+        run: |
+          set -eu
+          swift package resolve
+          CONFIG_FILE="$(find .build/checkouts/swift-configuration -path '*/Sources/Configuration/Providers/Files/FileProvider.swift' | head -n 1)"
+          if [ -n "${CONFIG_FILE:-}" ] && [ -f "$CONFIG_FILE" ]; then
+            perl -0pi -e 's/data: fileContents!\.bytes,/data: Array(fileContents!),/g' "$CONFIG_FILE"
+          fi
 
       - name: Validate resources
         env:
@@ -152,6 +172,16 @@ jobs:
 
       - name: Show Swift version
         run: swift --version
+
+      - name: Patch swift-configuration for CI
+        working-directory: ${{ env.SERVER_DIR }}
+        run: |
+          set -eu
+          swift package resolve
+          CONFIG_FILE="$(find .build/checkouts/swift-configuration -path '*/Sources/Configuration/Providers/Files/FileProvider.swift' | head -n 1)"
+          if [ -n "${CONFIG_FILE:-}" ] && [ -f "$CONFIG_FILE" ]; then
+            perl -0pi -e 's/data: fileContents!\.bytes,/data: Array(fileContents!),/g' "$CONFIG_FILE"
+          fi
 
       - name: Publish resources and manifest
         env:

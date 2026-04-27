@@ -84,3 +84,4 @@ Manual run example:
 - Публикация ресурсов не выполняется автоматически на каждый push.
 - Публикация делается через `workflow_dispatch`, чтобы управлять релизом вручную.
 - `publish_patches` должен запускаться только вместе с `publish_resources` или после него для уже опубликованной версии.
+- В server jobs workflow временно патчит транзитивную зависимость `apple/swift-configuration`, чтобы обойти несовместимость сборки в GitHub Actions (`Data.bytes` в `FileProvider.swift`).
