@@ -19,6 +19,9 @@ let package = Package(
         .target(
             name: "ResourceUpdater"
         ),
-
+        .testTarget(
+            name: "ResourceUpdaterTests",
+            dependencies: ["ResourceUpdater"]
+        ),
     ]
 )
