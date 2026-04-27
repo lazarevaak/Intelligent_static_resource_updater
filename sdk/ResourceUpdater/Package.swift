@@ -5,6 +5,10 @@ import PackageDescription
 
 let package = Package(
     name: "ResourceUpdater",
+    platforms: [
+        .iOS(.v15),
+        .macOS(.v12)
+    ],
     products: [
         .library(
             name: "ResourceUpdater",

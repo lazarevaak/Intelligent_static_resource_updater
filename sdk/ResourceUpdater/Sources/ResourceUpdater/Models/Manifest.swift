@@ -8,6 +8,8 @@
 import Foundation
 
 public struct Manifest: Codable {
+    public let schemaVersion: Int
+    public let minSdkVersion: String
     public let version: String
     public let generatedAt: Date
     public let resources: [ResourceEntry]
