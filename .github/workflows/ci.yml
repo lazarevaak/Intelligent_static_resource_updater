@@ -1,0 +1,243 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "**"
+    tags:
+      - "*"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_resources:
+        description: "Publish resources and manifest"
+        required: false
+        default: false
+        type: boolean
+      publish_patches:
+        description: "Generate patch artifacts after publish"
+        required: false
+        default: false
+        type: boolean
+      resource_version:
+        description: "Override resource version"
+        required: false
+        type: string
+      patch_from_versions:
+        description: "Comma-separated source versions for patch generation"
+        required: false
+        type: string
+
+env:
+  SERVER_DIR: server/ResourceUpdateServer
+  SDK_DIR: sdk/ResourceUpdater
+  MIN_SDK_VERSION: 1.0
+
+jobs:
+  server_tests:
+    name: Server Tests
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Run server tests
+        working-directory: ${{ env.SERVER_DIR }}
+        run: swift test
+
+  sdk_tests:
+    name: SDK Tests
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Run SDK tests
+        working-directory: ${{ env.SDK_DIR }}
+        run: swift test
+
+  resource_validate:
+    name: Validate Resources
+    runs-on: macos-14
+    needs:
+      - server_tests
+      - sdk_tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Validate resources
+        env:
+          STATIC_RESOURCES_DIR: ${{ vars.STATIC_RESOURCES_DIR }}
+          RESOURCE_APP_ID: ${{ vars.RESOURCE_APP_ID }}
+          RESOURCE_VERSION_INPUT: ${{ github.event.inputs.resource_version }}
+        run: |
+          set -eu
+
+          if [ -z "${STATIC_RESOURCES_DIR:-}" ]; then
+            echo "STATIC_RESOURCES_DIR is not set. Resource validation is skipped."
+            exit 0
+          fi
+
+          if [ -z "${RESOURCE_APP_ID:-}" ]; then
+            echo "RESOURCE_APP_ID is required when STATIC_RESOURCES_DIR is set."
+            exit 1
+          fi
+
+          RESOURCES_PATH="$GITHUB_WORKSPACE/$STATIC_RESOURCES_DIR"
+          if [ ! -d "$RESOURCES_PATH" ]; then
+            echo "Resources directory does not exist: $RESOURCES_PATH"
+            exit 1
+          fi
+
+          RESOURCE_VERSION="${RESOURCE_VERSION_INPUT:-}"
+          if [ -z "$RESOURCE_VERSION" ]; then
+            if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+              RESOURCE_VERSION="${GITHUB_REF_NAME}"
+            else
+              RESOURCE_VERSION="${GITHUB_SHA::7}"
+            fi
+          fi
+
+          echo "Validating resources from $RESOURCES_PATH"
+          echo "Resolved resource version: $RESOURCE_VERSION"
+
+          cd "$SERVER_DIR"
+          swift run ResourceUpdateServer validate \
+            --app-id "$RESOURCE_APP_ID" \
+            --version "$RESOURCE_VERSION" \
+            --resources-dir "$RESOURCES_PATH" \
+            --min-sdk-version "$MIN_SDK_VERSION"
+
+  publish_resources:
+    name: Publish Resources
+    runs-on: macos-14
+    needs:
+      - resource_validate
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_resources == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Publish resources and manifest
+        env:
+          STATIC_RESOURCES_DIR: ${{ vars.STATIC_RESOURCES_DIR }}
+          RESOURCE_APP_ID: ${{ vars.RESOURCE_APP_ID }}
+          RESOURCE_UPDATE_BASE_URL: ${{ vars.RESOURCE_UPDATE_BASE_URL }}
+          CI_PUBLISH_TOKEN: ${{ secrets.CI_PUBLISH_TOKEN }}
+          RESOURCE_VERSION_INPUT: ${{ github.event.inputs.resource_version }}
+        run: |
+          set -eu
+
+          : "${STATIC_RESOURCES_DIR:?STATIC_RESOURCES_DIR is required}"
+          : "${RESOURCE_APP_ID:?RESOURCE_APP_ID is required}"
+          : "${RESOURCE_UPDATE_BASE_URL:?RESOURCE_UPDATE_BASE_URL is required}"
+          : "${CI_PUBLISH_TOKEN:?CI_PUBLISH_TOKEN is required}"
+
+          RESOURCES_PATH="$GITHUB_WORKSPACE/$STATIC_RESOURCES_DIR"
+          if [ ! -d "$RESOURCES_PATH" ]; then
+            echo "Resources directory does not exist: $RESOURCES_PATH"
+            exit 1
+          fi
+
+          RESOURCE_VERSION="${RESOURCE_VERSION_INPUT:-}"
+          if [ -z "$RESOURCE_VERSION" ]; then
+            if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+              RESOURCE_VERSION="${GITHUB_REF_NAME}"
+            else
+              RESOURCE_VERSION="${GITHUB_SHA::7}"
+            fi
+          fi
+
+          REQUEST_ID="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA::7}"
+
+          echo "Publishing resources from $RESOURCES_PATH"
+          echo "Resolved resource version: $RESOURCE_VERSION"
+          echo "Target app id: $RESOURCE_APP_ID"
+          echo "Base URL: $RESOURCE_UPDATE_BASE_URL"
+
+          cd "$SERVER_DIR"
+          swift run ResourceUpdateServer publish-local \
+            --base-url "$RESOURCE_UPDATE_BASE_URL" \
+            --app-id "$RESOURCE_APP_ID" \
+            --version "$RESOURCE_VERSION" \
+            --resources-dir "$RESOURCES_PATH" \
+            --min-sdk-version "$MIN_SDK_VERSION" \
+            --request-id "$REQUEST_ID" \
+            --token "$CI_PUBLISH_TOKEN"
+
+  publish_patches:
+    name: Publish Patches
+    runs-on: macos-14
+    needs:
+      - publish_resources
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_patches == 'true' }}
+    steps:
+      - name: Generate patch artifacts
+        env:
+          RESOURCE_APP_ID: ${{ vars.RESOURCE_APP_ID }}
+          RESOURCE_UPDATE_BASE_URL: ${{ vars.RESOURCE_UPDATE_BASE_URL }}
+          PATCH_FROM_VERSIONS: ${{ github.event.inputs.patch_from_versions }}
+          RESOURCE_VERSION_INPUT: ${{ github.event.inputs.resource_version }}
+        run: |
+          set -eu
+
+          : "${RESOURCE_APP_ID:?RESOURCE_APP_ID is required}"
+          : "${RESOURCE_UPDATE_BASE_URL:?RESOURCE_UPDATE_BASE_URL is required}"
+          : "${PATCH_FROM_VERSIONS:?patch_from_versions input is required}"
+
+          RESOURCE_VERSION="${RESOURCE_VERSION_INPUT:-}"
+          if [ -z "$RESOURCE_VERSION" ]; then
+            if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+              RESOURCE_VERSION="${GITHUB_REF_NAME}"
+            else
+              RESOURCE_VERSION="${GITHUB_SHA::7}"
+            fi
+          fi
+
+          NORMALIZED_BASE_URL="${RESOURCE_UPDATE_BASE_URL%/}"
+
+          echo "Generating patch artifacts for app: $RESOURCE_APP_ID"
+          echo "Target version: $RESOURCE_VERSION"
+          echo "Source versions: $PATCH_FROM_VERSIONS"
+
+          IFS=',' read -r -a PATCH_VERSIONS <<< "$PATCH_FROM_VERSIONS"
+          for FROM_VERSION in "${PATCH_VERSIONS[@]}"; do
+            FROM_VERSION_TRIMMED="$(echo "$FROM_VERSION" | xargs)"
+            if [ -z "$FROM_VERSION_TRIMMED" ]; then
+              continue
+            fi
+
+            PATCH_URL="$NORMALIZED_BASE_URL/v1/patch/$RESOURCE_APP_ID/from/$FROM_VERSION_TRIMMED/to/$RESOURCE_VERSION"
+            META_URL="$NORMALIZED_BASE_URL/v1/patch/$RESOURCE_APP_ID/from/$FROM_VERSION_TRIMMED/to/$RESOURCE_VERSION/meta"
+
+            echo "Generating patch from $FROM_VERSION_TRIMMED to $RESOURCE_VERSION"
+            curl --fail --silent --show-error "$META_URL" > /dev/null
+            curl --fail --silent --show-error "$PATCH_URL" > /dev/null
+          done

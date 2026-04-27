@@ -1,8 +1,8 @@
 # Интеллектуальная система обновления статических ресурсов для мобильных приложений
 
-## GitLab CI/CD
+## GitHub Actions
 
-В репозитории добавлен минимальный pipeline для:
+В репозитории добавлен workflow для:
 
 - тестов серверной части;
 - тестов SDK;
@@ -10,4 +10,4 @@
 - публикации ресурсов и manifest на сервер обновлений.
 - явной генерации patch-артефактов отдельным job.
 
-Подробности и список переменных: [docs/gitlab-ci.md](/Users/macboock/Desktop/Курсачи/Курсач%203%20курс/Intelligent_static_resource_updater/docs/gitlab-ci.md:1)
+Подробности и список переменных: [docs/github-actions.md](/Users/macboock/Desktop/Курсачи/Курсач%203%20курс/Intelligent_static_resource_updater/docs/github-actions.md:1)
