@@ -1,0 +1,151 @@
+stages:
+  - test
+  - validate
+  - publish
+
+default:
+  image: swift:6.2
+  before_script:
+    - swift --version
+
+variables:
+  SERVER_DIR: "server/ResourceUpdateServer"
+  SDK_DIR: "sdk/ResourceUpdater"
+  MIN_SDK_VERSION: "1.0"
+
+cache:
+  key: "${CI_JOB_NAME}"
+  paths:
+    - server/ResourceUpdateServer/.build
+    - sdk/ResourceUpdater/.build
+
+server_tests:
+  stage: test
+  script:
+    - cd "$SERVER_DIR"
+    - swift test
+
+sdk_tests:
+  stage: test
+  script:
+    - cd "$SDK_DIR"
+    - swift test
+
+resource_validate:
+  stage: validate
+  needs:
+    - server_tests
+    - sdk_tests
+  script:
+    - |
+      set -eu
+
+      if [ -z "${STATIC_RESOURCES_DIR:-}" ]; then
+        echo "STATIC_RESOURCES_DIR is not set. Resource validation is skipped."
+        exit 0
+      fi
+
+      if [ -z "${RESOURCE_APP_ID:-}" ]; then
+        echo "RESOURCE_APP_ID is required when STATIC_RESOURCES_DIR is set."
+        exit 1
+      fi
+
+      RESOURCES_PATH="$CI_PROJECT_DIR/$STATIC_RESOURCES_DIR"
+      if [ ! -d "$RESOURCES_PATH" ]; then
+        echo "Resources directory does not exist: $RESOURCES_PATH"
+        exit 1
+      fi
+
+      RESOURCE_VERSION="${RESOURCE_VERSION:-${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}}"
+      echo "Validating resources from $RESOURCES_PATH"
+      echo "Resolved resource version: $RESOURCE_VERSION"
+
+      cd "$SERVER_DIR"
+      swift run ResourceUpdateServer validate \
+        --app-id "$RESOURCE_APP_ID" \
+        --version "$RESOURCE_VERSION" \
+        --resources-dir "$RESOURCES_PATH" \
+        --min-sdk-version "$MIN_SDK_VERSION"
+
+publish_resources:
+  stage: publish
+  needs:
+    - resource_validate
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+    - when: never
+  script:
+    - |
+      set -eu
+
+      : "${STATIC_RESOURCES_DIR:?STATIC_RESOURCES_DIR is required}"
+      : "${RESOURCE_APP_ID:?RESOURCE_APP_ID is required}"
+      : "${RESOURCE_UPDATE_BASE_URL:?RESOURCE_UPDATE_BASE_URL is required}"
+      : "${CI_PUBLISH_TOKEN:?CI_PUBLISH_TOKEN is required}"
+
+      RESOURCES_PATH="$CI_PROJECT_DIR/$STATIC_RESOURCES_DIR"
+      if [ ! -d "$RESOURCES_PATH" ]; then
+        echo "Resources directory does not exist: $RESOURCES_PATH"
+        exit 1
+      fi
+
+      RESOURCE_VERSION="${RESOURCE_VERSION:-${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}}"
+      REQUEST_ID="${CI_PIPELINE_ID}-${CI_JOB_ID}-${CI_COMMIT_SHORT_SHA}"
+
+      echo "Publishing resources from $RESOURCES_PATH"
+      echo "Resolved resource version: $RESOURCE_VERSION"
+      echo "Target app id: $RESOURCE_APP_ID"
+      echo "Base URL: $RESOURCE_UPDATE_BASE_URL"
+
+      cd "$SERVER_DIR"
+      swift run ResourceUpdateServer publish-local \
+        --base-url "$RESOURCE_UPDATE_BASE_URL" \
+        --app-id "$RESOURCE_APP_ID" \
+        --version "$RESOURCE_VERSION" \
+        --resources-dir "$RESOURCES_PATH" \
+        --min-sdk-version "$MIN_SDK_VERSION" \
+        --request-id "$REQUEST_ID" \
+        --token "$CI_PUBLISH_TOKEN"
+
+publish_patches:
+  stage: publish
+  needs:
+    - publish_resources
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+    - when: never
+  script:
+    - |
+      set -eu
+
+      : "${RESOURCE_APP_ID:?RESOURCE_APP_ID is required}"
+      : "${RESOURCE_UPDATE_BASE_URL:?RESOURCE_UPDATE_BASE_URL is required}"
+      : "${PATCH_FROM_VERSIONS:?PATCH_FROM_VERSIONS is required}"
+
+      RESOURCE_VERSION="${RESOURCE_VERSION:-${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}}"
+      NORMALIZED_BASE_URL="${RESOURCE_UPDATE_BASE_URL%/}"
+
+      echo "Generating patch artifacts for app: $RESOURCE_APP_ID"
+      echo "Target version: $RESOURCE_VERSION"
+      echo "Source versions: $PATCH_FROM_VERSIONS"
+
+      IFS=',' read -r -a PATCH_VERSIONS <<< "$PATCH_FROM_VERSIONS"
+      for FROM_VERSION in "${PATCH_VERSIONS[@]}"; do
+        FROM_VERSION_TRIMMED="$(echo "$FROM_VERSION" | xargs)"
+        if [ -z "$FROM_VERSION_TRIMMED" ]; then
+          continue
+        fi
+
+        PATCH_URL="$NORMALIZED_BASE_URL/v1/patch/$RESOURCE_APP_ID/from/$FROM_VERSION_TRIMMED/to/$RESOURCE_VERSION"
+        META_URL="$NORMALIZED_BASE_URL/v1/patch/$RESOURCE_APP_ID/from/$FROM_VERSION_TRIMMED/to/$RESOURCE_VERSION/meta"
+
+        echo "Generating patch from $FROM_VERSION_TRIMMED to $RESOURCE_VERSION"
+        curl --fail --silent --show-error "$META_URL" > /dev/null
+        curl --fail --silent --show-error "$PATCH_URL" > /dev/null
+      done
