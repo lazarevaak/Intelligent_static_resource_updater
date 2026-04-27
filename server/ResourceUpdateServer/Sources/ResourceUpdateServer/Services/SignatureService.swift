@@ -1,4 +1,4 @@
-import CryptoKit
+@preconcurrency import Crypto
 import Foundation
 import Vapor
 
@@ -11,7 +11,7 @@ struct SignatureService: Sendable {
         let keyId: String
     }
 
-    private struct KeyEntry: Sendable {
+    private struct KeyEntry: @unchecked Sendable {
         let keyId: String
         let createdAt: Date
         let privateKey: Curve25519.Signing.PrivateKey

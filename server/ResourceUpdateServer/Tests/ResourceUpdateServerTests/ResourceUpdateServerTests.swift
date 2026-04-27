@@ -1,5 +1,5 @@
 @testable import ResourceUpdateServer
-import CryptoKit
+import Crypto
 import Foundation
 import VaporTesting
 import Testing

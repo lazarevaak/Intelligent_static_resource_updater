@@ -1,6 +1,9 @@
 import ArgumentParser
-import CryptoKit
+import Crypto
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 struct ResourceUpdateCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
