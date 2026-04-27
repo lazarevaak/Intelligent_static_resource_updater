@@ -729,6 +729,7 @@ components:
         algorithm:
           type: string
           example: splice-v1
+          description: Byte-level splice patch. One patch may contain one or multiple isolated splice operations.
         baseHash:
           type: string
           pattern: '^[a-f0-9]{64}$'
@@ -750,11 +751,14 @@ components:
         offset:
           type: integer
           minimum: 0
+          description: Offset in the base payload before reverse-order application.
         deleteLength:
           type: integer
           minimum: 0
+          description: Number of bytes to remove from the base payload at offset.
         dataBase64:
           type: string
+          description: Replacement bytes encoded as base64.
     PatchMeta:
       type: object
       required: [appId, fromVersion, toVersion, generatedAt, added, changed, removed]

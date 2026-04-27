@@ -278,6 +278,60 @@ struct ResourceUpdateServerTests {
         }
     }
 
+    @Test("Segmented splice patch keeps multiple isolated edits as separate operations")
+    func segmentedSplicePatchResponse() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let fromVersion = "1.0.0"
+            let toVersion = "1.1.0"
+            let originalPayload = Data("prefix-AAAA-middle-BBBB-suffix".utf8)
+            let originalHash = sha256(originalPayload)
+            let changedPayload = Data("prefix-ZZZZ-middle-YYYY-suffix".utf8)
+            let changedHash = sha256(changedPayload)
+
+            let fromManifest = Manifest(
+                schemaVersion: 1,
+                minSdkVersion: "1.0",
+                version: fromVersion,
+                generatedAt: Date(),
+                resources: [
+                    ResourceEntry(path: "texts/sample.txt", hash: originalHash, size: originalPayload.count)
+                ]
+            )
+
+            let toManifest = Manifest(
+                schemaVersion: 1,
+                minSdkVersion: "1.0",
+                version: toVersion,
+                generatedAt: Date(),
+                resources: [
+                    ResourceEntry(path: "texts/sample.txt", hash: changedHash, size: changedPayload.count)
+                ]
+            )
+
+            try await publishManifest(app: app, appId: appId, version: fromVersion, manifest: fromManifest)
+            try await uploadResource(app: app, appId: appId, path: "texts/sample.txt", payload: originalPayload, hash: originalHash)
+            try await uploadResource(app: app, appId: appId, path: "texts/sample.txt", payload: changedPayload, hash: changedHash)
+            try await publishManifest(app: app, appId: appId, version: toVersion, manifest: toManifest)
+
+            try await app.testing().test(
+                .GET,
+                "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    let decoded = try? res.content.decode(PatchArtifact.self)
+                    let replace = decoded?.operations.first(where: { $0.op == "replace" })
+                    #expect(replace?.delta?.algorithm == "splice-v1")
+                    #expect((replace?.delta?.operations.count ?? 0) >= 2)
+                    if let delta = replace?.delta {
+                        let restored = applyDelta(delta, on: originalPayload)
+                        #expect(restored == changedPayload)
+                    }
+                }
+            )
+        }
+    }
+
     @Test("POST patch upload then GET patch returns uploaded artifact")
     func uploadPatchThenGetPatch() async throws {
         try await withConfiguredApp { app in
@@ -440,6 +494,71 @@ struct ResourceUpdateServerTests {
                     #expect(decoded?.decision == "no-update")
                 }
             )
+        }
+    }
+
+    @Test("Performance smoke: GET updates stays under 300ms locally")
+    func updatesPerformanceSmoke() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let fromVersion = "1.0.0"
+            let toVersion = "1.1.0"
+
+            let fromManifest = makeEmptyManifest(version: fromVersion)
+            let toManifest = makeEmptyManifest(version: toVersion)
+            let patchData = Data(#"{"schemaVersion":1,"appId":"demo","fromVersion":"1.0.0","toVersion":"1.1.0","generatedAt":"2026-01-01T00:00:00Z","operations":[]}"#.utf8)
+            let patchHash = sha256(patchData)
+
+            try await publishManifest(app: app, appId: appId, version: fromVersion, manifest: fromManifest)
+            try await publishManifest(app: app, appId: appId, version: toVersion, manifest: toManifest)
+            try await uploadPatch(
+                app: app,
+                appId: appId,
+                fromVersion: fromVersion,
+                toVersion: toVersion,
+                payload: patchData,
+                hash: patchHash
+            )
+
+            let clock = ContinuousClock()
+            let started = clock.now
+            try await app.testing().test(
+                .GET,
+                "v1/updates/\(appId)?fromVersion=\(fromVersion)&sdkVersion=2.1",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                }
+            )
+            let elapsed = started.duration(to: clock.now)
+            #expect(elapsed < .milliseconds(300))
+        }
+    }
+
+    @Test("Performance smoke: 5MB resource transfer stays under 5 seconds locally")
+    func resourceTransferPerformanceSmoke() async throws {
+        try await withConfiguredApp { app in
+            let appId = "demoapp-\(UUID().uuidString)"
+            let resourcePath = "payloads/five-meg.bin"
+            let payload = Data(repeating: 0x5A, count: 5 * 1024 * 1024)
+            let hash = sha256(payload)
+
+            let clock = ContinuousClock()
+            let uploadStarted = clock.now
+            try await uploadResource(app: app, appId: appId, path: resourcePath, payload: payload, hash: hash)
+            let uploadElapsed = uploadStarted.duration(to: clock.now)
+            #expect(uploadElapsed < .seconds(5))
+
+            let downloadStarted = clock.now
+            try await app.testing().test(
+                .GET,
+                "v1/resource/\(appId)/hash/\(hash)",
+                afterResponse: { res async in
+                    #expect(res.status == .ok)
+                    #expect(Data(buffer: res.body) == payload)
+                }
+            )
+            let downloadElapsed = downloadStarted.duration(to: clock.now)
+            #expect(downloadElapsed < .seconds(5))
         }
     }
 
@@ -1583,6 +1702,53 @@ struct ResourceUpdateServerTests {
             },
             afterResponse: { res async in
                 #expect(res.status == .created)
+            }
+        )
+    }
+
+    private func uploadResource(
+        app: Application,
+        appId: String,
+        path: String,
+        payload: Data,
+        hash: String
+    ) async throws {
+        try await app.testing().test(
+            .POST,
+            "v1/resource/\(appId)/upload",
+            beforeRequest: { req in
+                req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                req.headers.replaceOrAdd(name: "X-Resource-Path", value: path)
+                req.headers.replaceOrAdd(name: "X-Resource-Hash", value: hash)
+                req.headers.replaceOrAdd(name: "X-Resource-Size", value: String(payload.count))
+                req.body = .init(data: payload)
+            },
+            afterResponse: { res async in
+                #expect(res.status == .created || res.status == .ok)
+            }
+        )
+    }
+
+    private func uploadPatch(
+        app: Application,
+        appId: String,
+        fromVersion: String,
+        toVersion: String,
+        payload: Data,
+        hash: String
+    ) async throws {
+        try await app.testing().test(
+            .POST,
+            "v1/patch/\(appId)/from/\(fromVersion)/to/\(toVersion)/upload",
+            beforeRequest: { req in
+                req.headers.replaceOrAdd(name: "X-CI-Token", value: publishToken)
+                req.headers.replaceOrAdd(name: "X-Request-Id", value: UUID().uuidString)
+                req.headers.replaceOrAdd(name: "X-Patch-SHA256", value: hash)
+                req.headers.replaceOrAdd(name: "X-Patch-Size", value: String(payload.count))
+                req.body = .init(data: payload)
+            },
+            afterResponse: { res async in
+                #expect(res.status == .created || res.status == .ok)
             }
         )
     }
