@@ -11,6 +11,8 @@ let package = Package(
         .package(url: "https://github.com/vapor/vapor.git", from: "4.115.0"),
         // 🔵 Non-blocking, event-driven networking for Swift. Used for custom executors
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
+        // 🔐 Cross-platform crypto primitives (Linux/macOS)
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.3.0"),
         // 🧩 CLI argument parsing
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
         // ☁️ AWS SDK for Swift (S3 via Soto)
@@ -24,6 +26,7 @@ let package = Package(
                 .product(name: "Vapor", package: "vapor"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "SotoS3", package: "soto"),
                 .product(name: "SotoCore", package: "soto-core"),
@@ -34,6 +37,7 @@ let package = Package(
             name: "ResourceUpdateServerTests",
             dependencies: [
                 .target(name: "ResourceUpdateServer"),
+                .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "VaporTesting", package: "vapor"),
             ],
             swiftSettings: swiftSettings

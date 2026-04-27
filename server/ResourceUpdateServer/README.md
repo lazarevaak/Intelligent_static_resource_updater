@@ -8,6 +8,37 @@ Swift/Vapor server for static resource manifest delivery.
 swift run
 ```
 
+Docker:
+
+```bash
+docker build -t resource-update-server .
+docker run --rm \
+  -p 8080:8080 \
+  -e CI_PUBLISH_TOKEN=dev-ci-token \
+  -e SIGNING_ACTIVE_KEY_ID=main \
+  -e SIGNING_KEYS_JSON='[{"keyId":"main","privateKeyBase64":"<base64-private-key>","createdAt":"2026-04-26T00:00:00Z"}]' \
+  resource-update-server
+```
+
+Docker Compose:
+
+```bash
+cp compose.yml compose.local.yml
+# подставь реальный privateKeyBase64 вместо REPLACE_WITH_BASE64_PRIVATE_KEY
+docker compose -f compose.local.yml up --build
+```
+
+После запуска:
+- API: `http://127.0.0.1:8081`
+- Swagger UI: `http://127.0.0.1:8081/docs`
+- OpenAPI: `http://127.0.0.1:8081/openapi.yaml`
+
+Для Docker Compose host-порт можно переопределить:
+
+```bash
+HOST_PORT=8080 docker compose -f compose.local.yml up --build
+```
+
 Local CLI modes (without CI pipeline):
 
 ```bash

@@ -1,8 +1,13 @@
-import CryptoKit
+import Crypto
 import Foundation
 import Vapor
-import Darwin
 import NIOCore
+
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 struct RateLimitDecision: Sendable {
     let allowed: Bool
@@ -99,7 +104,7 @@ struct SharedFileRateLimitStore: RateLimitStore {
 
     private func openLockHandle(for fileURL: URL) throws -> FileHandle {
         if !FileManager.default.fileExists(atPath: fileURL.path) {
-            FileManager.default.createFile(atPath: fileURL.path, contents: Data())
+            _ = FileManager.default.createFile(atPath: fileURL.path, contents: Data())
         }
         return try FileHandle(forUpdating: fileURL)
     }

@@ -1,5 +1,6 @@
 import Vapor
 import ArgumentParser
+import Foundation
 import Logging
 import NIOCore
 import NIOPosix
@@ -15,7 +16,10 @@ enum Entrypoint {
             } catch is CleanExit {
                 return
             } catch {
-                fputs("\(error.localizedDescription)\n", stderr)
+                let message = "\(error.localizedDescription)\n"
+                if let data = message.data(using: .utf8) {
+                    try? FileHandle.standardError.write(contentsOf: data)
+                }
                 throw error
             }
             return
@@ -26,6 +30,7 @@ enum Entrypoint {
         let config = try ServerConfig.fromEnvironment()
         let sharedMetricsCollector = APIMetricsCollector()
         let app = try await Application.make(env)
+        configurePublicListener(app)
         var metricsApp: Application?
         if let listener = config.metrics.listener {
             let internalMetricsApp = try await Application.make(env)
@@ -79,5 +84,19 @@ enum Entrypoint {
         }
         try await metricsApp?.asyncShutdown()
         try await app.asyncShutdown()
+    }
+
+    private static func configurePublicListener(_ app: Application) {
+        let host = Environment.get("HOST")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let host, !host.isEmpty {
+            app.http.server.configuration.hostname = host
+        }
+
+        let rawPort = Environment.get("PORT")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let rawPort, let port = Int(rawPort), port > 0 {
+            app.http.server.configuration.port = port
+        }
     }
 }
