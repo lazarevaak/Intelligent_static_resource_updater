@@ -1,0 +1,32 @@
+services:
+  resource-update-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: resource-update-server
+    environment:
+      CI_PUBLISH_TOKEN: dev-ci-token
+      SIGNING_ACTIVE_KEY_ID: main
+      SIGNING_KEYS_JSON: '[{"keyId":"main","privateKeyBase64":"6b0O4BrvybFJsHKeFVx0M9V5VybKvDhkbaWzkvEGRho=","createdAt":"2026-04-26T00:00:00Z"}]'
+      HOST: 0.0.0.0
+      PORT: 8080
+    volumes:
+      - ./Public:/app/Public
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    container_name: resource-update-server-caddy
+    depends_on:
+      - resource-update-server
+    ports:
+      - "${HTTPS_HOST_PORT:-8443}:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

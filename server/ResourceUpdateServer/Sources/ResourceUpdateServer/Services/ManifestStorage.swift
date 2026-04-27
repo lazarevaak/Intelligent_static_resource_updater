@@ -564,38 +564,20 @@ actor ManifestStorage {
     ) -> BinaryDeltaPatch {
         let source = sourceData ?? Data()
         let baseSize = sourceData == nil ? sourceSize : source.count
-        let operation: BinaryDeltaOperation
+        let operations: [BinaryDeltaOperation]
 
         if sourceData == nil || source.isEmpty {
-            operation = BinaryDeltaOperation(
-                offset: 0,
-                deleteLength: baseSize,
-                dataBase64: targetData.base64EncodedString()
-            )
+            operations = [
+                BinaryDeltaOperation(
+                    offset: 0,
+                    deleteLength: baseSize,
+                    dataBase64: targetData.base64EncodedString()
+                )
+            ]
         } else {
-            let sourceBytes = [UInt8](source)
-            let targetBytes = [UInt8](targetData)
-
-            var prefix = 0
-            while prefix < sourceBytes.count, prefix < targetBytes.count, sourceBytes[prefix] == targetBytes[prefix] {
-                prefix += 1
-            }
-
-            var suffix = 0
-            while suffix < (sourceBytes.count - prefix),
-                  suffix < (targetBytes.count - prefix),
-                  sourceBytes[sourceBytes.count - 1 - suffix] == targetBytes[targetBytes.count - 1 - suffix] {
-                suffix += 1
-            }
-
-            let sourceEnd = sourceBytes.count - suffix
-            let targetEnd = targetBytes.count - suffix
-            let middle = Data(targetBytes[prefix..<targetEnd])
-
-            operation = BinaryDeltaOperation(
-                offset: prefix,
-                deleteLength: sourceEnd - prefix,
-                dataBase64: middle.base64EncodedString()
+            operations = makeSegmentedSpliceOperations(
+                sourceBytes: [UInt8](source),
+                targetBytes: [UInt8](targetData)
             )
         }
 
@@ -605,8 +587,184 @@ actor ManifestStorage {
             baseSize: baseSize,
             targetHash: targetHash,
             targetSize: targetData.count,
-            operations: [operation]
+            operations: operations
         )
+    }
+
+    private func makeSegmentedSpliceOperations(sourceBytes: [UInt8], targetBytes: [UInt8]) -> [BinaryDeltaOperation] {
+        let minAnchorLength = 4
+        let operations = makeSegmentedSpliceOperations(
+            sourceBytes: sourceBytes,
+            sourceRange: 0..<sourceBytes.count,
+            targetBytes: targetBytes,
+            targetRange: 0..<targetBytes.count,
+            minAnchorLength: minAnchorLength
+        )
+
+        if operations.isEmpty, sourceBytes != targetBytes {
+            return [
+                BinaryDeltaOperation(
+                    offset: 0,
+                    deleteLength: sourceBytes.count,
+                    dataBase64: Data(targetBytes).base64EncodedString()
+                )
+            ]
+        }
+
+        return operations
+    }
+
+    private func makeSegmentedSpliceOperations(
+        sourceBytes: [UInt8],
+        sourceRange: Range<Int>,
+        targetBytes: [UInt8],
+        targetRange: Range<Int>,
+        minAnchorLength: Int
+    ) -> [BinaryDeltaOperation] {
+        if sourceRange.isEmpty && targetRange.isEmpty {
+            return []
+        }
+
+        let trimmed = trimCommonEdges(
+            sourceBytes: sourceBytes,
+            sourceRange: sourceRange,
+            targetBytes: targetBytes,
+            targetRange: targetRange
+        )
+        let trimmedSource = trimmed.sourceRange
+        let trimmedTarget = trimmed.targetRange
+
+        if trimmedSource.isEmpty && trimmedTarget.isEmpty {
+            return []
+        }
+
+        if trimmedSource.isEmpty || trimmedTarget.isEmpty {
+            return [
+                BinaryDeltaOperation(
+                    offset: trimmedSource.lowerBound,
+                    deleteLength: trimmedSource.count,
+                    dataBase64: Data(targetBytes[trimmedTarget]).base64EncodedString()
+                )
+            ]
+        }
+
+        guard let anchor = longestSharedBlock(
+            sourceBytes: sourceBytes,
+            sourceRange: trimmedSource,
+            targetBytes: targetBytes,
+            targetRange: trimmedTarget,
+            minLength: minAnchorLength
+        ) else {
+            return [
+                BinaryDeltaOperation(
+                    offset: trimmedSource.lowerBound,
+                    deleteLength: trimmedSource.count,
+                    dataBase64: Data(targetBytes[trimmedTarget]).base64EncodedString()
+                )
+            ]
+        }
+
+        let left = makeSegmentedSpliceOperations(
+            sourceBytes: sourceBytes,
+            sourceRange: trimmedSource.lowerBound..<anchor.sourceStart,
+            targetBytes: targetBytes,
+            targetRange: trimmedTarget.lowerBound..<anchor.targetStart,
+            minAnchorLength: minAnchorLength
+        )
+        let right = makeSegmentedSpliceOperations(
+            sourceBytes: sourceBytes,
+            sourceRange: (anchor.sourceStart + anchor.length)..<trimmedSource.upperBound,
+            targetBytes: targetBytes,
+            targetRange: (anchor.targetStart + anchor.length)..<trimmedTarget.upperBound,
+            minAnchorLength: minAnchorLength
+        )
+        return left + right
+    }
+
+    private func trimCommonEdges(
+        sourceBytes: [UInt8],
+        sourceRange: Range<Int>,
+        targetBytes: [UInt8],
+        targetRange: Range<Int>
+    ) -> (sourceRange: Range<Int>, targetRange: Range<Int>) {
+        var sourceStart = sourceRange.lowerBound
+        var sourceEnd = sourceRange.upperBound
+        var targetStart = targetRange.lowerBound
+        var targetEnd = targetRange.upperBound
+
+        while sourceStart < sourceEnd,
+              targetStart < targetEnd,
+              sourceBytes[sourceStart] == targetBytes[targetStart] {
+            sourceStart += 1
+            targetStart += 1
+        }
+
+        while sourceStart < sourceEnd,
+              targetStart < targetEnd,
+              sourceBytes[sourceEnd - 1] == targetBytes[targetEnd - 1] {
+            sourceEnd -= 1
+            targetEnd -= 1
+        }
+
+        return (sourceStart..<sourceEnd, targetStart..<targetEnd)
+    }
+
+    private func longestSharedBlock(
+        sourceBytes: [UInt8],
+        sourceRange: Range<Int>,
+        targetBytes: [UInt8],
+        targetRange: Range<Int>,
+        minLength: Int
+    ) -> (sourceStart: Int, targetStart: Int, length: Int)? {
+        if sourceRange.count < minLength || targetRange.count < minLength {
+            return nil
+        }
+
+        var targetWindows: [Data: [Int]] = [:]
+        let targetLastStart = targetRange.upperBound - minLength
+        for start in targetRange.lowerBound...targetLastStart {
+            let window = Data(targetBytes[start..<(start + minLength)])
+            targetWindows[window, default: []].append(start)
+        }
+
+        var best: (sourceStart: Int, targetStart: Int, length: Int)?
+        let sourceLastStart = sourceRange.upperBound - minLength
+        for start in sourceRange.lowerBound...sourceLastStart {
+            let window = Data(sourceBytes[start..<(start + minLength)])
+            guard let matches = targetWindows[window] else {
+                continue
+            }
+
+            for targetStart in matches {
+                var sourceMatchStart = start
+                var targetMatchStart = targetStart
+                var length = minLength
+
+                while sourceMatchStart > sourceRange.lowerBound,
+                      targetMatchStart > targetRange.lowerBound,
+                      sourceBytes[sourceMatchStart - 1] == targetBytes[targetMatchStart - 1] {
+                    sourceMatchStart -= 1
+                    targetMatchStart -= 1
+                    length += 1
+                }
+
+                while sourceMatchStart + length < sourceRange.upperBound,
+                      targetMatchStart + length < targetRange.upperBound,
+                      sourceBytes[sourceMatchStart + length] == targetBytes[targetMatchStart + length] {
+                    length += 1
+                }
+
+                if let currentBest = best {
+                    if length > currentBest.length {
+                        best = (sourceMatchStart, targetMatchStart, length)
+                    }
+                } else {
+                    best = (sourceMatchStart, targetMatchStart, length)
+                }
+            }
+        }
+
+        return best
     }
 
     private func sha256(_ data: Data) -> String {

@@ -39,6 +39,23 @@ docker compose -f compose.local.yml up --build
 HOST_PORT=8080 docker compose -f compose.local.yml up --build
 ```
 
+HTTPS via reverse proxy (Caddy with internal CA for local/stage use):
+
+```bash
+docker compose -f compose.https.yml up --build
+```
+
+После запуска HTTPS доступен на:
+- API: `https://127.0.0.1:8443`
+- Swagger UI: `https://127.0.0.1:8443/docs`
+- OpenAPI: `https://127.0.0.1:8443/openapi.yaml`
+
+Для `curl` в локальной среде с internal CA:
+
+```bash
+curl -k https://127.0.0.1:8443/openapi.yaml
+```
+
 Local CLI modes (without CI pipeline):
 
 ```bash
@@ -89,6 +106,11 @@ Background cleanup scheduler:
 - runs inside the public server process
 - periodically applies the same retention policy as CLI `cleanup`
 - keeps latest `N` versions, removes obsolete patch artifacts and unused resource binaries
+
+Secure transport:
+- public deployment must terminate TLS before the Vapor app;
+- local/stage HTTPS can be started with `compose.https.yml` and `deploy/Caddyfile`;
+- production ingress/reverse proxy may be Nginx, Caddy, Traefik or cloud LB, but client traffic to the public API must use HTTPS.
 
 Optional flags:
 - `--min-sdk-version` (default: `1.0`)
@@ -461,6 +483,7 @@ SDK apply rules:
 - `add`: decode `dataBase64`, verify `sha256(data) == hash` and `data.count == size`, then write file by `path`;
 - `replace` (`splice-v1`):
   - verify base resource exists and `sha256(base) == delta.baseHash` and `base.count == delta.baseSize`;
+  - `delta.operations` may contain one or multiple isolated splice edits;
   - apply each splice operation in reverse order by `offset`:
     - validate `offset >= 0`, `deleteLength >= 0`,
     - validate `offset + deleteLength <= currentData.count`,
@@ -468,6 +491,16 @@ SDK apply rules:
   - verify final bytes: `sha256(result) == delta.targetHash == hash`,
     `result.count == delta.targetSize == size`;
 - if any operation or validation fails, rollback to snapshot and return error.
+
+Performance verification:
+- automated smoke tests validate local server timings for `GET /v1/updates` under `300 ms` and 5 MB resource upload/download under `5 s`;
+- run them with:
+
+```bash
+swift test
+```
+
+- these checks validate implementation overhead on a local deployment profile; end-to-end Internet latency still depends on network path, reverse proxy and artifact storage backend.
 
 ### 9) POST resource upload
 
