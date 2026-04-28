@@ -21,6 +21,7 @@ final class CustomSlider: UIView {
 
     private func configureUI() {
         backgroundColor = .white
+        titleView.textColor = .black
         translatesAutoresizingMaskIntoConstraints = false
 
         for view in [slider, titleView] {
