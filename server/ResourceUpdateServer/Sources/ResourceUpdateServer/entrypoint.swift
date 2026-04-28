@@ -11,8 +11,7 @@ enum Entrypoint {
         let cliSubcommands = Set(["publish-local", "dry-run", "validate", "cleanup"])
         if CommandLine.arguments.count >= 2, cliSubcommands.contains(CommandLine.arguments[1]) {
             do {
-                var command = try ResourceUpdateCLI.parse(Array(CommandLine.arguments.dropFirst(1)))
-                try command.run()
+                try await ResourceUpdateCLI.main(Array(CommandLine.arguments.dropFirst(1)))
             } catch is CleanExit {
                 return
             } catch {
