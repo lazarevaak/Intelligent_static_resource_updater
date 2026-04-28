@@ -2,9 +2,11 @@
 .DS_Store
 
 # Xcode
-*.xcworkspace
-*.xcodeproj
 DerivedData/
+**/*.xcodeproj/project.xcworkspace/**
+**/*.xcodeproj/xcuserdata/**
+*.xcuserstate
+*.xcbkptlist
 
 # Backups
 *_backup/
@@ -14,11 +16,6 @@ DerivedData/
 .build/
 .swiftpm/
 Package.resolved
-
-# Xcode
-DerivedData/
-*.xcodeproj
-*.xcworkspace
 
 # VS Code
 .vscode/

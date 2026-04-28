@@ -7,11 +7,14 @@ services:
     ports:
       - "${HOST_PORT:-8081}:8080"
     environment:
-      CI_PUBLISH_TOKEN: dev-ci-token
-      SIGNING_ACTIVE_KEY_ID: main
-      SIGNING_KEYS_JSON: '[{"keyId":"main","privateKeyBase64":"6b0O4BrvybFJsHKeFVx0M9V5VybKvDhkbaWzkvEGRho=","createdAt":"2026-04-26T00:00:00Z"}]'
+      CI_PUBLISH_TOKEN: ${CI_PUBLISH_TOKEN:?CI_PUBLISH_TOKEN is required}
+      SIGNING_ACTIVE_KEY_ID: ${SIGNING_ACTIVE_KEY_ID:?SIGNING_ACTIVE_KEY_ID is required}
+      SIGNING_KEYS_JSON: ${SIGNING_KEYS_JSON:?SIGNING_KEYS_JSON is required}
       HOST: 0.0.0.0
       PORT: 8080
+      ARTIFACT_BACKEND: ${ARTIFACT_BACKEND:-local}
+      CLEANUP_INTERVAL_SECONDS: ${CLEANUP_INTERVAL_SECONDS:-0}
+      CLEANUP_KEEP_LAST: ${CLEANUP_KEEP_LAST:-3}
     volumes:
       - ./Public:/app/Public
     restart: unless-stopped
