@@ -1,0 +1,22 @@
+{
+  "activityEntities" : [
+
+  ],
+  "createdDate" : "2026-04-28T12:08:28Z",
+  "dataPathRelativeToProjectURL" : "../create_ml_resource_update_testing_10000.csv",
+  "dataResult" : {
+    "createdDate" : "2026-04-28T12:08:28Z",
+    "dataSourceID" : "552273C1-8B0C-4359-B594-A50F29BD820A",
+    "dataURL" : "file:///Users/macboock/Desktop/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%D0%B8/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%203%20%D0%BA%D1%83%D1%80%D1%81/Intelligent_static_resource_updater/ml/create_ml_resource_update_testing_10000.csv"
+  },
+  "dataURL" : "file:///Users/macboock/Desktop/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%D0%B8/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%203%20%D0%BA%D1%83%D1%80%D1%81/Intelligent_static_resource_updater/ml/create_ml_resource_update_testing_10000.csv",
+  "experimentIDs" : [
+    "F4F28B2C-874F-4AD6-A7A6-EA6BDD5C0B4A"
+  ],
+  "id" : "552273C1-8B0C-4359-B594-A50F29BD820A",
+  "modifiedDate" : "2026-04-28T12:08:28Z",
+  "pathType" : 0,
+  "preferredFilename" : "create_ml_resource_update_testing_10000.csv",
+  "title" : "create_ml_resource_update_testing_10000.csv",
+  "version" : "1.0"
+}

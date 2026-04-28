@@ -1,0 +1,29 @@
+{
+  "activityEntities" : [
+    "projectCreated",
+    [
+      {
+        "createdDate" : "2026-04-28T12:03:07Z",
+        "event" : "projectCreated",
+        "id" : "6EBDDE10-BFC7-420E-9A43-5E6C3EDFDBA4",
+        "subtitle" : "ResourceUpdateDecision",
+        "title" : "Project Created"
+      }
+    ]
+  ],
+  "authorName" : "Александра Лазарева",
+  "createdDate" : "2026-04-28T12:03:07Z",
+  "description" : "",
+  "id" : "389B667C-42CA-45FD-96D3-71F40837FE5F",
+  "license" : "",
+  "location" : "",
+  "modifiedDate" : "2026-04-28T12:27:28Z",
+  "projectName" : "ResourceUpdateDecision",
+  "settingsEntity" : {
+    "snapshotOnExtendTraining" : true,
+    "snapshotOnResumeTraining" : false
+  },
+  "taskType" : "generalClassifier",
+  "title" : "Tabular Classification",
+  "version" : "1.1"
+}

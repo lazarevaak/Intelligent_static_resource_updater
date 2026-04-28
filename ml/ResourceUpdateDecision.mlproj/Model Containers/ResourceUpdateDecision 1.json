@@ -1,0 +1,505 @@
+{
+  "activityEntities" : [
+    "evaluationDataAdded",
+    [
+      {
+        "createdDate" : "2026-04-28T12:08:28Z",
+        "event" : "evaluationDataAdded",
+        "id" : "36B3B3BD-0EE9-4AE1-8F26-916595F1DA23",
+        "subtitle" : "create_ml_resource_update_testing_10000.csv",
+        "title" : "Testing Data Added"
+      }
+    ],
+    "evaluationFinished",
+    [
+      {
+        "createdDate" : "2026-04-28T12:08:41Z",
+        "event" : "evaluationFinished",
+        "id" : "8B268764-BCDD-4BD2-A979-236DF5393AD5",
+        "subtitle" : "ResourceUpdateDecision 1",
+        "title" : "Testing Completed"
+      }
+    ],
+    "evaluationStarted",
+    [
+      {
+        "createdDate" : "2026-04-28T12:08:36Z",
+        "event" : "evaluationStarted",
+        "id" : "11153104-CE23-4F08-9A9A-FEBF92E5B0EF",
+        "subtitle" : "ResourceUpdateDecision 1",
+        "title" : "Testing Started"
+      }
+    ],
+    "trainingFinished",
+    [
+      {
+        "createdDate" : "2026-04-28T12:08:34Z",
+        "event" : "trainingFinished",
+        "id" : "3FCB330A-3310-4FC6-811F-5C737D8F060A",
+        "subtitle" : "10 iterations",
+        "title" : "Training Completed"
+      }
+    ],
+    "trainingStarted",
+    [
+      {
+        "createdDate" : "2026-04-28T12:08:31Z",
+        "event" : "trainingStarted",
+        "id" : "8741C79A-2A30-4FD9-9696-EC2639D0EC01",
+        "subtitle" : "ResourceUpdateDecision 1",
+        "title" : "Training Started"
+      }
+    ],
+    "trainingDataAdded",
+    [
+      {
+        "createdDate" : "2026-04-28T12:03:14Z",
+        "event" : "trainingDataAdded",
+        "id" : "F3C44C91-3A7F-4CD0-9703-2F6D9F38C5B9",
+        "subtitle" : "create_ml_resource_update_dataset_50000.csv",
+        "title" : "Training Data Added"
+      }
+    ],
+    "experimentCreated",
+    [
+      {
+        "createdDate" : "2026-04-28T12:03:07Z",
+        "event" : "experimentCreated",
+        "id" : "4C7B5C44-3216-419F-8719-6079EBE87973",
+        "subtitle" : "ResourceUpdateDecision 1",
+        "title" : "Model Source Created"
+      }
+    ]
+  ],
+  "contentDataResult" : {
+    "createdDate" : "2026-04-28T12:03:14Z"
+  },
+  "createdDate" : "2026-04-28T12:03:07Z",
+  "evaluationContainerEntity" : {
+    "createdDate" : "2026-04-28T12:08:41Z",
+    "evaluationEntities" : [
+
+    ],
+    "id" : "d178022d-0062-487c-8a8a-a3845fc2af57",
+    "modifiedDate" : "2026-04-28T12:08:41Z",
+    "previewType" : "tabularClassifier",
+    "testingEvaluationEntity" : {
+      "accuracy" : 0.9623000025749207,
+      "analysedDataType" : "datasource",
+      "createdDate" : "2026-04-28T12:03:07Z",
+      "dataResult" : {
+        "classesCount" : 2,
+        "columnTypes" : [
+          "Int",
+          "Double",
+          "Int",
+          "Double",
+          "Double",
+          "Int",
+          "Int"
+        ],
+        "columnValues" : [
+          "1, 2, 2, 1, 1, 1, 2, 2, 2, 1, 2, 2, 1, 2, 1, 2, 2, 2, 2, 1, 2, 2, 0, 2, 2, 2, 2, 2, 2, 1",
+          "0,82, 0,16, 0,52, 0,90, 0,12, 0,82, 0,33, 0,94, 0,50, 0,42, 0,80, 0,11, 0,43, 0,74, 0,63, 0,88, 0,38, 0,68, 0,57, 0,85, 0,21, 0,53, 0,55, 0,85, 0,87, 0,63, 0,78, 0,23, 0,45, 0,29",
+          "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0",
+          "399,05, 641,42, 302,21, 249,37, 80,21, 202,09, 581,75, 689,25, 136,27, 76,02, 289,70, 277,70, 280,84, 692,54, 181,84, 135,27, 532,98, 209,58, 742,83, 338,70, 255,47, 282,29, 617,84, 650,49, 704,31, 309,94, 347,37, 698,79, 819,31, 169,69",
+          "0,56, 0,24, 0,58, 0,73, 0,38, 0,53, 0,34, 0,66, 0,27, 0,89, 0,16, 0,52, 0,14, 0,34, 0,09, 0,53, 0,60, 0,20, 0,38, 0,48, 0,73, 0,93, 0,68, 0,85, 0,22, 0,37, 0,08, 0,15, 0,41, 0,97",
+          "0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0",
+          "0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0"
+        ],
+        "columns" : [
+          "networkType",
+          "batteryLevel",
+          "isCharging",
+          "updateSizeMb",
+          "usageFrequency",
+          "isCriticalUpdate",
+          "shouldUpdate"
+        ],
+        "createdDate" : "2026-04-28T12:03:14Z",
+        "dataAnalysis" : {
+          "classifierAnalysis" : {
+
+          },
+          "issues" : [
+            {
+              "description" : "Data has 10000 rows",
+              "severity" : "info"
+            }
+          ],
+          "objectDetectorAnalysis" : {
+            "details" : {
+
+            }
+          },
+          "summary" : {
+            "canUseValidation" : 1,
+            "classCount" : 2,
+            "sampleCount" : 10000
+          }
+        },
+        "dataSourceID" : "552273C1-8B0C-4359-B594-A50F29BD820A",
+        "dataURL" : "file:///Users/macboock/Desktop/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%D0%B8/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%203%20%D0%BA%D1%83%D1%80%D1%81/Intelligent_static_resource_updater/ml/create_ml_resource_update_testing_10000.csv",
+        "itemsCount" : 10000
+      },
+      "dataSourceID" : "552273C1-8B0C-4359-B594-A50F29BD820A",
+      "evaluationResult" : {
+        "generalClassifier" : {
+          "accuracy" : 0.9623000025749207,
+          "statsByLabel" : {
+            "0" : {
+              "count" : 4605,
+              "precisionRecall" : {
+                "success" : {
+                  "precision" : 0.961370587348938,
+                  "recall" : 0.9565689563751221
+                }
+              }
+            },
+            "1" : {
+              "count" : 5395,
+              "precisionRecall" : {
+                "success" : {
+                  "precision" : 0.9630860090255737,
+                  "recall" : 0.9671918153762817
+                }
+              }
+            }
+          }
+        }
+      },
+      "finishTime" : "2026-04-28T12:08:41Z",
+      "id" : "1c436bc7-0211-4043-8ff1-c3630998a8d1",
+      "startTime" : "2026-04-28T12:08:36Z"
+    },
+    "trainingEvaluationEntity" : {
+      "analysedDataType" : "none",
+      "createdDate" : "2026-04-28T12:03:07Z",
+      "dataResult" : {
+        "classesCount" : 2,
+        "createdDate" : "2026-04-28T12:03:14Z",
+        "dataAnalysis" : {
+          "classifierAnalysis" : {
+
+          },
+          "issues" : [
+            {
+              "description" : "Data has 50000 rows",
+              "severity" : "info"
+            }
+          ],
+          "objectDetectorAnalysis" : {
+            "details" : {
+
+            }
+          },
+          "summary" : {
+            "canUseValidation" : 1,
+            "classCount" : 2,
+            "sampleCount" : 50000
+          }
+        },
+        "dataSourceID" : "664976BC-5322-4F30-9AAF-F0E5368BBF2A",
+        "dataURL" : "file:///Users/macboock/Desktop/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%D0%B8/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%203%20%D0%BA%D1%83%D1%80%D1%81/Intelligent_static_resource_updater/ml/create_ml_resource_update_dataset_50000.csv",
+        "itemsCount" : 50000
+      },
+      "dataSourceID" : "664976BC-5322-4F30-9AAF-F0E5368BBF2A",
+      "evaluationResult" : {
+        "generalClassifier" : {
+          "accuracy" : 0.9638,
+          "confusionMatrix" : [
+
+          ],
+          "statsByLabel" : {
+            "0" : {
+              "count" : 20842,
+              "precisionRecall" : {
+                "success" : {
+                  "precision" : 0.9636565471306531,
+                  "recall" : 0.9579694846943672
+                }
+              }
+            },
+            "1" : {
+              "count" : 24158,
+              "precisionRecall" : {
+                "success" : {
+                  "precision" : 0.9639224084675261,
+                  "recall" : 0.968830201175594
+                }
+              }
+            }
+          }
+        }
+      },
+      "id" : "89d65870-f390-416d-9284-5967643bb5aa"
+    },
+    "validationEvaluationEntity" : {
+      "analysedDataType" : "auto",
+      "createdDate" : "2026-04-28T12:03:07Z",
+      "dataResult" : {
+        "createdDate" : "2026-04-28T12:03:14Z"
+      },
+      "evaluationResult" : {
+        "generalClassifier" : {
+          "accuracy" : 0.9662,
+          "confusionMatrix" : [
+
+          ],
+          "statsByLabel" : {
+            "0" : {
+              "count" : 2277,
+              "precisionRecall" : {
+                "success" : {
+                  "precision" : 0.9671985815602837,
+                  "recall" : 0.9582784365393061
+                }
+              }
+            },
+            "1" : {
+              "count" : 2723,
+              "precisionRecall" : {
+                "success" : {
+                  "precision" : 0.9653790087463557,
+                  "recall" : 0.9728240910760191
+                }
+              }
+            }
+          }
+        }
+      },
+      "id" : "a40ff71a-7b95-400f-9c53-707aec87b3c8"
+    }
+  },
+  "evaluationEntity" : {
+    "analysedDataType" : "none",
+    "dataResult" : {
+
+    },
+    "id" : "2dcd1e02-ccf8-469f-b2b0-89f55a0411dc"
+  },
+  "evaluationState" : "evaluated",
+  "id" : "F4F28B2C-874F-4AD6-A7A6-EA6BDD5C0B4A",
+  "modelEntity" : {
+    "createdDate" : "2026-04-28T12:03:07Z",
+    "experimentID" : "F4F28B2C-874F-4AD6-A7A6-EA6BDD5C0B4A",
+    "id" : "4E15F2E1-F492-45B4-878F-8716A3E16F5F",
+    "modelURL" : "Models/ResourceUpdateDecision%201.mlmodel",
+    "modifiedDate" : "2026-04-28T12:03:07Z",
+    "title" : "",
+    "version" : "1.0"
+  },
+  "modifiedDate" : "2026-04-28T12:08:41Z",
+  "preferredFilename" : "ResourceUpdateDecision 1",
+  "settingEntity" : {
+    "algorithmType" : "maxEnt",
+    "augmentations" : [
+
+    ],
+    "featureNames" : [
+      "networkType",
+      "batteryLevel",
+      "isCharging",
+      "updateSizeMb",
+      "usageFrequency",
+      "isCriticalUpdate"
+    ],
+    "generalClassifierType" : {
+      "boostedTreeClassifier" : {
+        "columnSubsample" : 1,
+        "maxDepth" : 6,
+        "minChildWeight" : 0.1,
+        "minLossReduction" : 0,
+        "rowSubsample" : 1,
+        "stepSize" : 0.3
+      }
+    },
+    "handActionClassifierAugmentations" : [
+
+    ],
+    "handPoseClassifierAugmentations" : [
+
+    ],
+    "harVideoAugmentations" : 0,
+    "seedType" : "default",
+    "styleTransferAlgorithmType" : "image",
+    "suggestedColumnTypes" : [
+      "Int",
+      "Double",
+      "Int",
+      "Double",
+      "Double",
+      "Int",
+      "Int"
+    ],
+    "suggestedColumnValues" : [
+      "2, 1, 1, 0, 2, 2, 1, 2, 1, 1, 2, 0, 2, 2, 1, 2, 2, 2, 2, 1, 2, 2, 0, 1, 2, 1, 2, 1, 2, 0",
+      "0,27, 0,79, 0,22, 0,74, 0,68, 0,76, 0,15, 0,78, 0,83, 0,69, 0,73, 0,59, 0,88, 0,49, 0,75, 0,78, 0,56, 0,60, 0,13, 0,63, 0,28, 0,24, 0,40, 0,20, 0,51, 0,31, 0,74, 0,19, 0,49, 0,43",
+      "0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0",
+      "630,37, 17,01, 188,24, 195,30, 353,44, 194,95, 51,04, 282,66, 284,60, 93,56, 179,52, 400,16, 594,60, 567,50, 194,87, 159,08, 167,52, 687,87, 135,12, 61,32, 566,05, 394,26, 551,37, 111,31, 16,05, 147,88, 417,49, 271,62, 418,44, 691,54",
+      "0,65, 0,79, 0,44, 0,66, 0,94, 0,61, 0,39, 0,45, 0,13, 0,72, 0,22, 0,79, 0,34, 0,54, 0,30, 0,72, 0,70, 0,84, 0,17, 0,97, 0,80, 0,08, 0,08, 0,84, 0,53, 0,71, 0,66, 0,76, 0,03, 0,40",
+      "0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1",
+      "1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0"
+    ],
+    "suggestedColumns" : [
+      "networkType",
+      "batteryLevel",
+      "isCharging",
+      "updateSizeMb",
+      "usageFrequency",
+      "isCriticalUpdate",
+      "shouldUpdate"
+    ],
+    "targetColumn" : "shouldUpdate",
+    "taskType" : "generalClassifier",
+    "transferLearningEmbeddingType" : "dynamic"
+  },
+  "snapshotRole" : {
+    "withoutSnapshots" : 0
+  },
+  "state" : "trained",
+  "title" : "ResourceUpdateDecision 1",
+  "trainingEntity" : {
+    "analysedDataType" : "datasource",
+    "checkpointMetrics" : {
+
+    },
+    "dataResult" : {
+      "classesCount" : 2,
+      "columnTypes" : [
+        "Int",
+        "Double",
+        "Int",
+        "Double",
+        "Double",
+        "Int",
+        "Int"
+      ],
+      "columnValues" : [
+        "2, 1, 1, 0, 2, 2, 1, 2, 1, 1, 2, 0, 2, 2, 1, 2, 2, 2, 2, 1, 2, 2, 0, 1, 2, 1, 2, 1, 2, 0",
+        "0,27, 0,79, 0,22, 0,74, 0,68, 0,76, 0,15, 0,78, 0,83, 0,69, 0,73, 0,59, 0,88, 0,49, 0,75, 0,78, 0,56, 0,60, 0,13, 0,63, 0,28, 0,24, 0,40, 0,20, 0,51, 0,31, 0,74, 0,19, 0,49, 0,43",
+        "0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0",
+        "630,37, 17,01, 188,24, 195,30, 353,44, 194,95, 51,04, 282,66, 284,60, 93,56, 179,52, 400,16, 594,60, 567,50, 194,87, 159,08, 167,52, 687,87, 135,12, 61,32, 566,05, 394,26, 551,37, 111,31, 16,05, 147,88, 417,49, 271,62, 418,44, 691,54",
+        "0,65, 0,79, 0,44, 0,66, 0,94, 0,61, 0,39, 0,45, 0,13, 0,72, 0,22, 0,79, 0,34, 0,54, 0,30, 0,72, 0,70, 0,84, 0,17, 0,97, 0,80, 0,08, 0,08, 0,84, 0,53, 0,71, 0,66, 0,76, 0,03, 0,40",
+        "0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1",
+        "1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0"
+      ],
+      "columns" : [
+        "networkType",
+        "batteryLevel",
+        "isCharging",
+        "updateSizeMb",
+        "usageFrequency",
+        "isCriticalUpdate",
+        "shouldUpdate"
+      ],
+      "createdDate" : "2026-04-28T12:03:14Z",
+      "dataAnalysis" : {
+        "classifierAnalysis" : {
+
+        },
+        "issues" : [
+          {
+            "description" : "Data has 50000 rows",
+            "severity" : "info"
+          }
+        ],
+        "objectDetectorAnalysis" : {
+          "details" : {
+
+          }
+        },
+        "summary" : {
+          "canUseValidation" : 1,
+          "classCount" : 2,
+          "sampleCount" : 50000
+        }
+      },
+      "dataSourceID" : "664976BC-5322-4F30-9AAF-F0E5368BBF2A",
+      "dataURL" : "file:///Users/macboock/Desktop/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%D0%B8/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%203%20%D0%BA%D1%83%D1%80%D1%81/Intelligent_static_resource_updater/ml/create_ml_resource_update_dataset_50000.csv",
+      "itemsCount" : 50000
+    },
+    "dataSourceID" : "664976BC-5322-4F30-9AAF-F0E5368BBF2A",
+    "featureExtractionCheckpointMayBeAvailable" : false,
+    "finishTime" : "2026-04-28T12:08:34Z",
+    "progress" : [
+
+    ],
+    "snapshottableCheckpoints" : {
+
+    },
+    "startTime" : "2026-04-28T12:08:31Z",
+    "trainingAccuracy" : 0.9638,
+    "trainingResults" : {
+      "generalClassifier" : {
+        "accuracy" : 0.9638,
+        "confusionMatrix" : [
+
+        ],
+        "statsByLabel" : {
+          "0" : {
+            "count" : 20842,
+            "precisionRecall" : {
+              "success" : {
+                "precision" : 0.9636565471306531,
+                "recall" : 0.9579694846943672
+              }
+            }
+          },
+          "1" : {
+            "count" : 24158,
+            "precisionRecall" : {
+              "success" : {
+                "precision" : 0.9639224084675261,
+                "recall" : 0.968830201175594
+              }
+            }
+          }
+        }
+      }
+    },
+    "validationAccuracy" : 0.9662,
+    "validationResults" : {
+      "generalClassifier" : {
+        "accuracy" : 0.9662,
+        "confusionMatrix" : [
+
+        ],
+        "statsByLabel" : {
+          "0" : {
+            "count" : 2277,
+            "precisionRecall" : {
+              "success" : {
+                "precision" : 0.9671985815602837,
+                "recall" : 0.9582784365393061
+              }
+            }
+          },
+          "1" : {
+            "count" : 2723,
+            "precisionRecall" : {
+              "success" : {
+                "precision" : 0.9653790087463557,
+                "recall" : 0.9728240910760191
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "validationEntity" : {
+    "analysedDataType" : "auto",
+    "dataResult" : {
+      "createdDate" : "2026-04-28T12:03:14Z"
+    },
+    "splitOptions" : {
+      "strategy" : {
+        "automatic" : {
+
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

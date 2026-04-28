@@ -1,0 +1,41 @@
+{
+  "activityEntities" : [
+    "dataSourceTrainingStarted",
+    [
+      {
+        "createdDate" : "2026-04-28T12:08:31Z",
+        "event" : "dataSourceTrainingStarted",
+        "id" : "BBF4107F-FEF0-454D-8B5E-7158D2932C5B",
+        "subtitle" : "ResourceUpdateDecision 1",
+        "title" : "Used By"
+      }
+    ],
+    "dataSourceMetrics",
+    [
+      {
+        "createdDate" : "2026-04-28T12:08:31Z",
+        "event" : "dataSourceMetrics",
+        "id" : "EDADDD41-2EEC-4B2D-B7E7-74A8E30EE395",
+        "subtitle" : "2 Classes, 50 000 Items",
+        "title" : "Data Summary"
+      }
+    ]
+  ],
+  "createdDate" : "2026-04-28T12:03:14Z",
+  "dataPathRelativeToProjectURL" : "../create_ml_resource_update_dataset_50000.csv",
+  "dataResult" : {
+    "createdDate" : "2026-04-28T12:03:14Z",
+    "dataSourceID" : "664976BC-5322-4F30-9AAF-F0E5368BBF2A",
+    "dataURL" : "file:///Users/macboock/Desktop/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%D0%B8/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%203%20%D0%BA%D1%83%D1%80%D1%81/Intelligent_static_resource_updater/ml/create_ml_resource_update_dataset_50000.csv"
+  },
+  "dataURL" : "file:///Users/macboock/Desktop/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%D0%B8/%D0%9A%D1%83%D1%80%D1%81%D0%B0%D1%87%203%20%D0%BA%D1%83%D1%80%D1%81/Intelligent_static_resource_updater/ml/create_ml_resource_update_dataset_50000.csv",
+  "experimentIDs" : [
+    "F4F28B2C-874F-4AD6-A7A6-EA6BDD5C0B4A"
+  ],
+  "id" : "664976BC-5322-4F30-9AAF-F0E5368BBF2A",
+  "modifiedDate" : "2026-04-28T12:08:31Z",
+  "pathType" : 0,
+  "preferredFilename" : "create_ml_resource_update_dataset_50000.csv",
+  "title" : "create_ml_resource_update_dataset_50000.csv",
+  "version" : "1.0"
+}
