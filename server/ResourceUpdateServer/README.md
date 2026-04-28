@@ -23,9 +23,9 @@ docker run --rm \
 Docker Compose:
 
 ```bash
-cp compose.yml compose.local.yml
-# подставь реальный privateKeyBase64 вместо REPLACE_WITH_BASE64_PRIVATE_KEY
-docker compose -f compose.local.yml up --build
+# .env лежит рядом с compose.yml и содержит локальные значения переменных окружения.
+# Для реального сервера замени CI_PUBLISH_TOKEN и SIGNING_KEYS_JSON в .env.
+docker compose -f compose.yml up --build
 ```
 
 После запуска:
@@ -36,7 +36,7 @@ docker compose -f compose.local.yml up --build
 Для Docker Compose host-порт можно переопределить:
 
 ```bash
-HOST_PORT=8080 docker compose -f compose.local.yml up --build
+HOST_PORT=8080 docker compose -f compose.yml up --build
 ```
 
 HTTPS via reverse proxy (Caddy with internal CA for local/stage use):

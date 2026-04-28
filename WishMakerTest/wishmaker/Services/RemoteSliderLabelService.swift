@@ -17,7 +17,7 @@ final class RemoteSliderLabelService {
     static let shared = RemoteSliderLabelService()
 
     private enum Constants {
-        static let baseURL = "http://127.0.0.1:8081/"
+        static let baseURL = "http://81.26.184.66:8081/"
         static let appID = "demoapp"
         static let sdkVersion = "1.0"
         static let resourcePath = "texts/slider-labels.json"
