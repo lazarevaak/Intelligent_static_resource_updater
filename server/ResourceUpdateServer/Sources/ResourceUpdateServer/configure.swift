@@ -18,6 +18,7 @@ func configurePublicApplication(
     includeMetricsRoutes: Bool
 ) async throws {
     configureContent(on: app)
+    app.routes.defaultMaxBodySize = "50mb"
     app.apiMetricsCollector = metricsCollector
     let artifactStorage = try makeArtifactStorage(app: app, config: config)
     let rateLimitStore = try makeRateLimitStore(
