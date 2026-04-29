@@ -66,15 +66,15 @@
   {
     "id": "2AF7E6EF-2E08-4A1F-8F6B-0CC4A3A8A001",
     "brandTitle": "Tesla",
-    "displayName": "Tesla Model Y",
-    "locationPinTitle": "Your Tesla",
-    "modelAssetPath": "models/Tesla_2018_Model_3.usdz",
-    "currentRangeKm": 411,
-    "batteryLevel": 0.68,
-    "chargeLimitPercent": 85,
-    "preferredChargeLimitPercent": 85,
-    "climateSummary": "Interior 21° C",
-    "locationSummary": "Home charging",
+    "displayName": "Tesla Cybertruck",
+    "locationPinTitle": "Cybertruck",
+    "modelAssetPath": "models/Tesla_Cybertruck.usdz",
+    "currentRangeKm": 512,
+    "batteryLevel": 0.92,
+    "chargeLimitPercent": 90,
+    "preferredChargeLimitPercent": 90,
+    "climateSummary": "Interior 18° C",
+    "locationSummary": "Cybertruck test route",
     "dashboardQuickActions": [
       { "title": "Lock", "systemName": "lock.fill" },
       { "title": "Climate", "systemName": "fanblades.fill" },
@@ -83,20 +83,20 @@
     ],
     "dashboardRows": [
       { "systemName": "car.fill", "title": "Control" },
-      { "systemName": "fanblades.fill", "title": "Climate", "subtitle": "Interior 21° C" },
-      { "systemName": "location.north.fill", "title": "Location", "subtitle": "Home charging" }
+      { "systemName": "fanblades.fill", "title": "Climate", "subtitle": "Interior 18° C" },
+      { "systemName": "location.north.fill", "title": "Location", "subtitle": "Cybertruck test route" }
     ],
     "charging": {
       "title": "Charging",
       "status": "Charging",
-      "locationName": "Tesla Supercharger Amsterdam",
-      "estimatedRangeKm": 411,
-      "timeUntilFull": "1h 10m",
-      "chargingSpeedKw": 64,
-      "addedEnergyKWh": 18,
-      "addedRangeKm": 120,
-      "chargingCost": "€9.80",
-      "recommendedLimitText": "Recommended: 85%",
+      "locationName": "Cybertruck Test Supercharger",
+      "estimatedRangeKm": 512,
+      "timeUntilFull": "24m",
+      "chargingSpeedKw": 250,
+      "addedEnergyKWh": 42,
+      "addedRangeKm": 260,
+      "chargingCost": "€22.90",
+      "recommendedLimitText": "Recommended: 90%",
       "controls": [
         { "title": "Start Charging", "systemName": "play.fill", "isHighlighted": true },
         { "title": "Stop Charging", "systemName": "stop.fill" },
@@ -107,16 +107,16 @@
     },
     "profile": {
       "title": "Profile",
-      "membershipTitle": "Premium driver",
-      "tripsCount": 96,
-      "rating": 4.8,
+      "membershipTitle": "Cybertruck tester",
+      "tripsCount": 321,
+      "rating": 5.0,
       "preferences": [
         { "title": "Autopilot", "systemName": "steeringwheel", "tintStyle": "accent" },
         { "title": "Climate", "systemName": "fanblades.fill", "tintStyle": "muted" }
       ],
       "overviewRows": [
-        { "systemName": "bolt.fill", "title": "Charge target", "subtitle": "Set to 85%" },
-        { "systemName": "location.north.fill", "title": "Home charging", "subtitle": "Amsterdam" },
+        { "systemName": "bolt.fill", "title": "Charge target", "subtitle": "Set to 90%" },
+        { "systemName": "location.north.fill", "title": "Home charging", "subtitle": "Cybertruck Test Supercharger" },
         { "systemName": "lock.shield.fill", "title": "Security", "subtitle": "Face ID enabled" }
       ],
       "quickActions": [

@@ -1,8 +1,8 @@
 [
   {
     "id": "2D8D4243-740E-4EC4-A764-AF29FF83A031",
-    "title": "Moscow City Charging Hub",
-    "subtitle": "Top-rated public charging station",
+    "title": "Cybertruck Test Supercharger",
+    "subtitle": "Remote resource update test station",
     "type": "supercharger",
     "latitude": 55.7448,
     "longitude": 37.6345,
@@ -10,8 +10,8 @@
     "workingHours": "24/7",
     "distanceKm": 1.6,
     "supercharger": {
-      "powerKw": 72,
-      "pricePerKwh": 0.35
+      "powerKw": 250,
+      "pricePerKwh": 0.59
     }
   },
   {
