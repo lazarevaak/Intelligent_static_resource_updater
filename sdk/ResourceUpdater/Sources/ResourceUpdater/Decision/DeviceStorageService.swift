@@ -17,7 +17,7 @@ public struct DeviceStorageService: DeviceStorageServiceProtocol {
     }
 
     public func freeDiskSpaceBytes(at directory: URL) throws -> Int64 {
-        let values = try directory.resourceValues(forKeys: [
+        let values = try existingVolumeURL(for: directory).resourceValues(forKeys: [
             .volumeAvailableCapacityForImportantUsageKey,
             .volumeAvailableCapacityKey
         ])
@@ -31,5 +31,20 @@ public struct DeviceStorageService: DeviceStorageServiceProtocol {
         }
 
         throw ResourceUpdaterError.invalidResponse
+    }
+
+    private func existingVolumeURL(for directory: URL) -> URL {
+        var url = directory
+        let fileManager = FileManager.default
+
+        while !fileManager.fileExists(atPath: url.path) {
+            let parent = url.deletingLastPathComponent()
+            if parent.path == url.path {
+                break
+            }
+            url = parent
+        }
+
+        return url
     }
 }

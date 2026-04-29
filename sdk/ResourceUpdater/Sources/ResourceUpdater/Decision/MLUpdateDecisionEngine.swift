@@ -1,8 +1,11 @@
 import CoreML
 import Foundation
+import OSLog
 
 public actor MLUpdateDecisionEngine: UpdateDecisionEngine {
     public static let shared = MLUpdateDecisionEngine()
+
+    private static let logger = Logger(subsystem: "ResourceUpdater", category: "ml-decision")
 
     private var model: MLModel?
 
@@ -17,10 +20,12 @@ public actor MLUpdateDecisionEngine: UpdateDecisionEngine {
             let shouldUpdate = output.featureValue(for: "shouldUpdate")?.int64Value ?? 0
             let probabilityDict = output.featureValue(for: "shouldUpdateProbability")?.dictionaryValue as? [Int64: NSNumber]
             let p = probabilityDict?[1]?.doubleValue
+            Self.logger.info("ML model prediction shouldUpdate=\(shouldUpdate == 1, privacy: .public) probability=\(p ?? -1, privacy: .public)")
 
             return UpdateDecision(shouldUpdate: shouldUpdate == 1, probability: p)
         } catch {
             // Fail open: if ML is unavailable, do not block updates.
+            Self.logger.error("ML model unavailable, fail-open shouldUpdate=true error=\(error.localizedDescription, privacy: .public)")
             return UpdateDecision(shouldUpdate: true, probability: nil)
         }
     }

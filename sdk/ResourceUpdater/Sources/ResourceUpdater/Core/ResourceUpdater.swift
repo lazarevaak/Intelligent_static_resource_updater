@@ -1,6 +1,9 @@
 import Foundation
+import OSLog
 
 public final class ResourceUpdater: @unchecked Sendable {
+    private static let logger = Logger(subsystem: "ResourceUpdater", category: "updates")
+
     private let api: UpdateAPI
     private let storage: LocalResourceStore
     private let config: ResourceUpdaterConfig
@@ -35,7 +38,9 @@ public final class ResourceUpdater: @unchecked Sendable {
     ) {
         Task {
             do {
-                let updates = try await api.fetchUpdates(fromVersion: storage.currentVersion())
+                let currentVersion = storage.currentVersion()
+                let updates = try await api.fetchUpdates(fromVersion: currentVersion)
+                Self.logUpdateResponse(updates, currentVersion: currentVersion, mode: "check")
 
                 guard updates.decision != "no-update" else {
                     completion(.success(false))
@@ -52,6 +57,7 @@ public final class ResourceUpdater: @unchecked Sendable {
                     context: context,
                     isCriticalUpdate: Self.isCriticalUpdate(reason: updates.reason)
                 )
+                Self.logDecision(decision, context: context, updates: updates, mode: "check")
 
                 completion(.success(decision.shouldUpdate))
             } catch {
@@ -76,6 +82,7 @@ public final class ResourceUpdater: @unchecked Sendable {
     public func applyUpdates() async throws {
         let currentVersion = storage.currentVersion()
         let updates = try await api.fetchUpdates(fromVersion: currentVersion)
+        Self.logUpdateResponse(updates, currentVersion: currentVersion, mode: "apply")
 
         switch updates.decision {
         case "no-update":
@@ -85,6 +92,8 @@ public final class ResourceUpdater: @unchecked Sendable {
         default:
             throw ResourceUpdaterError.invalidPatchOperation("unknown decision \(updates.decision)")
         }
+
+        await logDecisionForApply(updates)
 
         switch updates.decision {
         case "patch":
@@ -107,5 +116,39 @@ public final class ResourceUpdater: @unchecked Sendable {
     private static func isCriticalUpdate(reason: String) -> Bool {
         let lower = reason.lowercased()
         return lower.contains("critical") || lower.contains("security")
+    }
+
+    private func logDecisionForApply(_ updates: UpdatesResponse) async {
+        do {
+            let context = try await contextBuilder.makeContext(
+                from: updates,
+                resourcePath: config.appId,
+                storageDirectory: config.storageDirectory
+            )
+            let decision = await decisionEngine.evaluate(
+                context: context,
+                isCriticalUpdate: Self.isCriticalUpdate(reason: updates.reason)
+            )
+            Self.logDecision(decision, context: context, updates: updates, mode: "apply")
+        } catch {
+            Self.logger.error("ML decision logging failed mode=apply latest=\(updates.latestVersion, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private static func logUpdateResponse(
+        _ updates: UpdatesResponse,
+        currentVersion: String?,
+        mode: String
+    ) {
+        logger.info("Update response mode=\(mode, privacy: .public) decision=\(updates.decision, privacy: .public) from=\(currentVersion ?? "nil", privacy: .public) latest=\(updates.latestVersion, privacy: .public) reason=\(updates.reason, privacy: .public) manifestSize=\(updates.manifest.size, privacy: .public) patchSize=\(updates.patch?.size ?? 0, privacy: .public)")
+    }
+
+    private static func logDecision(
+        _ decision: UpdateDecision,
+        context: UpdateDecisionContext,
+        updates: UpdatesResponse,
+        mode: String
+    ) {
+        logger.info("ML update decision mode=\(mode, privacy: .public) shouldUpdate=\(decision.shouldUpdate, privacy: .public) probability=\(decision.probability ?? -1, privacy: .public) serverDecision=\(updates.decision, privacy: .public) latest=\(updates.latestVersion, privacy: .public) reason=\(updates.reason, privacy: .public) sizeMb=\(context.updateSizeMb, privacy: .public) online=\(context.isOnline, privacy: .public) network=\(context.networkType, privacy: .public) lowData=\(context.isLowDataMode, privacy: .public) battery=\(context.batteryLevel ?? -1, privacy: .public) charging=\(context.isCharging, privacy: .public) freeDiskMb=\(context.freeDiskSpaceMb, privacy: .public)")
     }
 }
