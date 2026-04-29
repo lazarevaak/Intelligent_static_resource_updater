@@ -129,6 +129,9 @@ jobs:
               RESOURCE_VERSION="${GITHUB_REF_NAME}"
             else
               RESOURCE_VERSION="1.0.${GITHUB_RUN_NUMBER}"
+              if [ "${GITHUB_RUN_ATTEMPT:-1}" != "1" ]; then
+                RESOURCE_VERSION="${RESOURCE_VERSION}.${GITHUB_RUN_ATTEMPT}"
+              fi
             fi
           fi
 
@@ -197,6 +200,9 @@ jobs:
               RESOURCE_VERSION="${GITHUB_REF_NAME}"
             else
               RESOURCE_VERSION="1.0.${GITHUB_RUN_NUMBER}"
+              if [ "${GITHUB_RUN_ATTEMPT:-1}" != "1" ]; then
+                RESOURCE_VERSION="${RESOURCE_VERSION}.${GITHUB_RUN_ATTEMPT}"
+              fi
             fi
           fi
 
