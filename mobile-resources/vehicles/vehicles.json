@@ -2,15 +2,15 @@
   {
     "id": "1E7FB8D8-1D34-4A53-9A7D-8EACD8B10001",
     "brandTitle": "Tesla",
-    "displayName": "Tesla Model 3",
-    "locationPinTitle": "Your Tesla",
-    "modelAssetPath": "models/Tesla_2018_Model_3.usdz",
-    "currentRangeKm": 340,
-    "batteryLevel": 0.76,
-    "chargeLimitPercent": 80,
-    "preferredChargeLimitPercent": 80,
-    "climateSummary": "Interior 20° C",
-    "locationSummary": "Berlin Supercharger route",
+    "displayName": "Tesla Cybertruck LIVE",
+    "locationPinTitle": "Cybertruck LIVE",
+    "modelAssetPath": "models/Tesla_Cybertruck.usdz",
+    "currentRangeKm": 620,
+    "batteryLevel": 0.94,
+    "chargeLimitPercent": 90,
+    "preferredChargeLimitPercent": 90,
+    "climateSummary": "Interior 18° C",
+    "locationSummary": "Remote update route",
     "dashboardQuickActions": [
       { "title": "Lock", "systemName": "lock.fill" },
       { "title": "Climate", "systemName": "fanblades.fill" },
@@ -19,20 +19,20 @@
     ],
     "dashboardRows": [
       { "systemName": "car.fill", "title": "Control" },
-      { "systemName": "fanblades.fill", "title": "Climate", "subtitle": "Interior 20° C" },
-      { "systemName": "location.north.fill", "title": "Location", "subtitle": "Berlin Supercharger route" }
+      { "systemName": "fanblades.fill", "title": "Climate", "subtitle": "Interior 18° C" },
+      { "systemName": "location.north.fill", "title": "Location", "subtitle": "Remote update route" }
     ],
     "charging": {
       "title": "Charging",
       "status": "Charging",
-      "locationName": "Tesla Supercharger Berlin",
-      "estimatedRangeKm": 340,
-      "timeUntilFull": "1h 25m",
-      "chargingSpeedKw": 72,
-      "addedEnergyKWh": 24,
-      "addedRangeKm": 150,
-      "chargingCost": "€12.40",
-      "recommendedLimitText": "Recommended: 80%",
+      "locationName": "Cybertruck Test Supercharger",
+      "estimatedRangeKm": 620,
+      "timeUntilFull": "18m",
+      "chargingSpeedKw": 250,
+      "addedEnergyKWh": 48,
+      "addedRangeKm": 310,
+      "chargingCost": "€29.90",
+      "recommendedLimitText": "Recommended: 90%",
       "controls": [
         { "title": "Start Charging", "systemName": "play.fill", "isHighlighted": true },
         { "title": "Stop Charging", "systemName": "stop.fill" },
@@ -43,16 +43,16 @@
     },
     "profile": {
       "title": "Profile",
-      "membershipTitle": "Premium driver",
-      "tripsCount": 148,
-      "rating": 4.9,
+      "membershipTitle": "Remote resource tester",
+      "tripsCount": 333,
+      "rating": 5.0,
       "preferences": [
         { "title": "Autopilot", "systemName": "steeringwheel", "tintStyle": "accent" },
         { "title": "Climate", "systemName": "fanblades.fill", "tintStyle": "muted" }
       ],
       "overviewRows": [
-        { "systemName": "bolt.fill", "title": "Charge target", "subtitle": "Set to 80%" },
-        { "systemName": "location.north.fill", "title": "Home charging", "subtitle": "Tesla Supercharger Berlin" },
+        { "systemName": "bolt.fill", "title": "Charge target", "subtitle": "Set to 90%" },
+        { "systemName": "location.north.fill", "title": "Home charging", "subtitle": "Cybertruck Test Supercharger" },
         { "systemName": "lock.shield.fill", "title": "Security", "subtitle": "Face ID enabled" }
       ],
       "quickActions": [

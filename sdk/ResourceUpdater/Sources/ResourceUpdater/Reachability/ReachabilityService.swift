@@ -14,7 +14,7 @@ public final actor ReachabilityService: ReachabilityServiceProtocol {
     private let (stream, continuation) = AsyncStream<ReachabilityStatus>.makeStream()
 
     public var currentStatus = ReachabilityStatus(
-        status: .offline,
+        status: .online,
         connectionType: .wifi,
         restricted: .no
     )

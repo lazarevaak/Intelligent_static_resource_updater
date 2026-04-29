@@ -86,22 +86,6 @@ public final class ResourceUpdater: @unchecked Sendable {
             throw ResourceUpdaterError.invalidPatchOperation("unknown decision \(updates.decision)")
         }
 
-        let context = try await contextBuilder.makeContext(
-            from: updates,
-            resourcePath: config.appId,
-            storageDirectory: config.storageDirectory
-        )
-
-        let decision = await decisionEngine.evaluate(
-            context: context,
-            isCriticalUpdate: Self.isCriticalUpdate(reason: updates.reason)
-        )
-
-        guard decision.shouldUpdate else {
-            // Decision engine rejected applying the update in the current conditions.
-            return
-        }
-
         switch updates.decision {
         case "patch":
             let manifest = try await api.fetchManifest(descriptor: updates.manifest)
