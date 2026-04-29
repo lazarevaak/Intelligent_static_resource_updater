@@ -45,8 +45,8 @@ final class TeslaModelViewerViewController: UIViewController {
     private let cameraNode = SCNNode()
     private let modelRootNode = SCNNode()
 
-    private var yaw: Float = -.pi / 4.8
-    private var pitch: Float = 0.18
+    private var yaw: Float = VehicleModelOrientation.frontYaw
+    private var pitch: Float = VehicleModelOrientation.initialPitch
 
     init(vehicle: TeslaVehicle) {
         self.vehicle = vehicle

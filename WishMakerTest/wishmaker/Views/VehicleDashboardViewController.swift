@@ -4,7 +4,6 @@
 //
 //  Created by Alexandra Lazareva on 27.04.2026.
 import SceneKit
-import SwiftUI
 import UIKit
 
 final class VehicleDashboardViewController: UIViewController {
@@ -17,13 +16,13 @@ final class VehicleDashboardViewController: UIViewController {
         var yaw: Float {
             switch self {
             case .left:
-                return Float.pi / 2
+                return VehicleModelOrientation.leftYaw
             case .front:
-                return 0
+                return VehicleModelOrientation.frontYaw
             case .right:
-                return -Float.pi / 2
+                return VehicleModelOrientation.rightYaw
             case .rear:
-                return Float.pi
+                return VehicleModelOrientation.rearYaw
             }
         }
 
@@ -55,25 +54,19 @@ final class VehicleDashboardViewController: UIViewController {
     }
 
     private let viewModel: VehicleDashboardViewModel
-    private let profileViewControllerFactory: () -> UIViewController
     private let gradientView = GradientBackgroundView()
 
     private let dashboardCard = UIView()
     private let titleLabel = UILabel()
     private let rangeLabel = UILabel()
-    private let profileButton = UIButton(type: .system)
     private let sceneView = SCNView()
     private let quickActionsBar = UIStackView()
     private let angleButtons: [UIButton] = ViewAnglePreset.allCases.map { _ in UIButton(type: .system) }
     private var selectedAnglePreset: ViewAnglePreset = .front
     private var modelWrapperNode: SCNNode?
 
-    init(
-        viewModel: VehicleDashboardViewModel,
-        profileViewControllerFactory: @escaping () -> UIViewController
-    ) {
+    init(viewModel: VehicleDashboardViewModel) {
         self.viewModel = viewModel
-        self.profileViewControllerFactory = profileViewControllerFactory
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -134,19 +127,6 @@ final class VehicleDashboardViewController: UIViewController {
 
         rangeLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        profileButton.translatesAutoresizingMaskIntoConstraints = false
-        profileButton.setImage(UIImage(systemName: "person.fill"), for: .normal)
-        profileButton.tintColor = AppColors.hintText
-        profileButton.backgroundColor = AppColors.controlBackground
-        profileButton.layer.cornerRadius = 28
-        profileButton.layer.borderWidth = 1
-        profileButton.layer.borderColor = AppColors.elevatedBorder.cgColor
-        profileButton.layer.shadowColor = AppColors.primaryText.cgColor
-        profileButton.layer.shadowOpacity = 0.12
-        profileButton.layer.shadowRadius = 22
-        profileButton.layer.shadowOffset = CGSize(width: 0, height: 8)
-        profileButton.addTarget(self, action: #selector(didTapProfileButton), for: .touchUpInside)
-
         sceneView.translatesAutoresizingMaskIntoConstraints = false
         sceneView.backgroundColor = .clear
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(didTapModel))
@@ -165,7 +145,6 @@ final class VehicleDashboardViewController: UIViewController {
 
         dashboardCard.addSubview(titleLabel)
         dashboardCard.addSubview(rangeLabel)
-        dashboardCard.addSubview(profileButton)
         dashboardCard.addSubview(sceneView)
         dashboardCard.addSubview(quickActionsBar)
 
@@ -175,11 +154,6 @@ final class VehicleDashboardViewController: UIViewController {
 
             rangeLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
             rangeLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-
-            profileButton.topAnchor.constraint(equalTo: dashboardCard.topAnchor, constant: 22),
-            profileButton.trailingAnchor.constraint(equalTo: dashboardCard.trailingAnchor, constant: -22),
-            profileButton.widthAnchor.constraint(equalToConstant: 56),
-            profileButton.heightAnchor.constraint(equalToConstant: 56),
 
             sceneView.topAnchor.constraint(equalTo: rangeLabel.bottomAnchor, constant: 14),
             sceneView.leadingAnchor.constraint(equalTo: dashboardCard.leadingAnchor),
@@ -203,7 +177,7 @@ final class VehicleDashboardViewController: UIViewController {
             sceneView,
             modelAssetPath: vehicle.modelAssetPath,
             cameraPosition: SCNVector3(x: 0, y: 0.7, z: 8.4),
-            modelEulerAngles: SCNVector3(x: 0, y: -.pi / 4.8, z: 0),
+            modelEulerAngles: VehicleModelOrientation.dashboardEulerAngles,
             modelScale: SCNVector3(x: 1, y: 1, z: 1),
             modelPosition: SCNVector3(x: 0, y: 0, z: 0),
             lightIntensity: 1300,
@@ -360,13 +334,6 @@ final class VehicleDashboardViewController: UIViewController {
         let centerZ = (scaledMin.z + scaledMax.z) / 2
 
         node.position = SCNVector3(-centerX, -centerY * 0.9, -centerZ)
-    }
-
-    @objc
-    private func didTapProfileButton() {
-        let controller = profileViewControllerFactory()
-        controller.modalPresentationStyle = .fullScreen
-        present(controller, animated: true)
     }
 
     @objc

@@ -47,12 +47,7 @@ final class AppCoordinator {
 
     private func makeUIKitFlow() -> UIViewController {
         let viewModel = VehicleDashboardViewModel(appState: appState)
-        let controller = VehicleDashboardViewController(
-            viewModel: viewModel,
-            profileViewControllerFactory: { [weak self] in
-                self?.makeProfileModal() ?? UIViewController()
-            }
-        )
+        let controller = VehicleDashboardViewController(viewModel: viewModel)
         return makeNavigationController(rootViewController: controller)
     }
 
@@ -81,10 +76,6 @@ final class AppCoordinator {
     private func makeProfileFlow() -> UIViewController {
         let hostingController = UIHostingController(rootView: makeProfileView())
         return makeNavigationController(rootViewController: hostingController)
-    }
-
-    private func makeProfileModal() -> UIViewController {
-        UIHostingController(rootView: makeProfileView(dismissOnPullDown: true))
     }
 
     private func makeProfileView(dismissOnPullDown: Bool = false) -> ProfileDashboardView {

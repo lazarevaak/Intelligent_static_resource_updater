@@ -8,19 +8,21 @@ import UIKit
 @MainActor
 final class RootTabBarController: UITabBarController {
     private enum Layout {
-        static let tabBarHorizontalInset: CGFloat = 16
-        static let tabBarBottomInset: CGFloat = 10
-        static let tabBarHeight: CGFloat = 74
-        static let tabBarContentInset: CGFloat = 24
+        static let tabBarHorizontalInset = AppTabBarMetrics.horizontalInset
+        static let tabBarBottomInset = AppTabBarMetrics.bottomInset
+        static let tabBarHeight = AppTabBarMetrics.height
+        static let tabBarContentInset = AppTabBarMetrics.contentInset
     }
 
     private let iconProvider: TabBarIconProvider
+    private let contentContainers: [TabContentContainerViewController]
 
     init(viewControllers: [UIViewController]) {
         self.iconProvider = .shared
+        contentContainers = viewControllers.map(TabContentContainerViewController.init(contentController:))
         super.init(nibName: nil, bundle: nil)
-        configureTabBarItems(for: viewControllers)
-        self.viewControllers = viewControllers
+        configureTabBarItems(for: contentContainers)
+        self.viewControllers = contentContainers
     }
 
     @available(*, unavailable)
@@ -38,6 +40,7 @@ final class RootTabBarController: UITabBarController {
         super.viewDidLayoutSubviews()
         layoutTabBar()
         layoutTabBarButtons()
+        layoutContentContainers()
     }
 
     private func configureTabBar() {
@@ -106,6 +109,13 @@ final class RootTabBarController: UITabBarController {
             frame.origin.x = minX + (slotWidth * CGFloat(index))
             frame.size.width = slotWidth
             button.frame = frame
+        }
+    }
+
+    private func layoutContentContainers() {
+        let bottomInset = max(0, view.bounds.maxY - tabBar.frame.minY + AppTabBarMetrics.contentBottomSpacing)
+        contentContainers.forEach { container in
+            container.contentBottomInset = bottomInset
         }
     }
 
