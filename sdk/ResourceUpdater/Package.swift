@@ -17,7 +17,10 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "ResourceUpdater"
+            name: "ResourceUpdater",
+            resources: [
+                .process("Resources")
+            ]
         ),
         .testTarget(
             name: "ResourceUpdaterTests",

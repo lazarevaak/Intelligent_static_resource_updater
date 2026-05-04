@@ -1,20 +1,21 @@
 import Foundation
-import XCTest
+import Testing
+
 @testable import ResourceUpdater
 
-final class ResourceUpdaterFlowTests: XCTestCase {
-    override class func tearDown() {
-        MockURLProtocol.requestHandler = nil
-    }
+@Suite(.serialized)
+struct ResourceUpdaterFlowTests {
+    @Test func applyUpdatesEndToEndPatchFlow() async throws {
+        defer { MockURLProtocol.requestHandler = nil }
 
-    func testApplyUpdatesEndToEndPatchFlow() async throws {
         let context = try makeStoreContext()
         let store = LocalResourceStore(rootDirectory: context.rootDirectory)
         let session = makeMockedSession()
         let signing = try SigningFixture()
         let updater = ResourceUpdater(
             config: makeConfig(storageDirectory: context.rootDirectory),
-            session: session
+            session: session,
+            decisionEngine: AlwaysAllowUpdateDecisionEngine()
         )
 
         let oldData = Data("hello-old".utf8)
@@ -72,7 +73,7 @@ final class ResourceUpdaterFlowTests: XCTestCase {
             "X-Signature-Key-Id": updates.payload.manifest.signatureKeyId
         ]
         let patchData = try canonicalJSON(patch)
-        let patchDescriptor = try XCTUnwrap(updates.payload.patch)
+        let patchDescriptor = try #require(updates.payload.patch)
         let patchHeaders = [
             "X-Patch-SHA256": patchDescriptor.sha256,
             "X-Signature": patchDescriptor.signature,
@@ -97,18 +98,21 @@ final class ResourceUpdaterFlowTests: XCTestCase {
 
         try await updater.applyUpdates()
 
-        XCTAssertEqual(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent("texts/message.txt")), newData)
-        XCTAssertEqual(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent("texts/new.txt")), addedData)
-        XCTAssertEqual(store.currentVersion(), "1.1.0")
+        #expect(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent("texts/message.txt")) == newData)
+        #expect(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent("texts/new.txt")) == addedData)
+        #expect(store.currentVersion() == "1.1.0")
     }
 
-    func testApplyUpdatesFailsWhenManifestHashIsInvalid() async throws {
+    @Test func applyUpdatesFailsWhenManifestHashIsInvalid() async throws {
+        defer { MockURLProtocol.requestHandler = nil }
+
         let context = try makeStoreContext()
         let session = makeMockedSession()
         let signing = try SigningFixture()
         let updater = ResourceUpdater(
             config: makeConfig(storageDirectory: context.rootDirectory),
-            session: session
+            session: session,
+            decisionEngine: AlwaysAllowUpdateDecisionEngine()
         )
 
         let manifest = makeManifest(
@@ -141,21 +145,24 @@ final class ResourceUpdaterFlowTests: XCTestCase {
 
         do {
             try await updater.applyUpdates()
-            XCTFail("expected hash mismatch")
-        } catch let error as ResourceUpdaterError {
-            guard case .hashMismatch = error else {
-                return XCTFail("unexpected error: \(error)")
-            }
+            Issue.record("expected hash mismatch")
+        } catch ResourceUpdaterError.hashMismatch {
+            // Expected.
+        } catch {
+            Issue.record("unexpected error: \(error)")
         }
     }
 
-    func testApplyUpdatesFailsWhenManifestSignatureIsInvalid() async throws {
+    @Test func applyUpdatesFailsWhenManifestSignatureIsInvalid() async throws {
+        defer { MockURLProtocol.requestHandler = nil }
+
         let context = try makeStoreContext()
         let session = makeMockedSession()
         let signing = try SigningFixture()
         let updater = ResourceUpdater(
             config: makeConfig(storageDirectory: context.rootDirectory),
-            session: session
+            session: session,
+            decisionEngine: AlwaysAllowUpdateDecisionEngine()
         )
 
         let manifest = makeManifest(
@@ -213,11 +220,17 @@ final class ResourceUpdaterFlowTests: XCTestCase {
 
         do {
             try await updater.applyUpdates()
-            XCTFail("expected signature verification failure")
-        } catch let error as ResourceUpdaterError {
-            guard case .signatureVerificationFailed = error else {
-                return XCTFail("unexpected error: \(error)")
-            }
+            Issue.record("expected signature verification failure")
+        } catch ResourceUpdaterError.signatureVerificationFailed {
+            // Expected.
+        } catch {
+            Issue.record("unexpected error: \(error)")
         }
+    }
+}
+
+private struct AlwaysAllowUpdateDecisionEngine: UpdateDecisionEngine {
+    func evaluate(context: UpdateDecisionContext, isCriticalUpdate: Bool) async -> UpdateDecision {
+        UpdateDecision(shouldUpdate: true, probability: 1)
     }
 }

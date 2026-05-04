@@ -1,9 +1,10 @@
 import Foundation
-import XCTest
+import Testing
+
 @testable import ResourceUpdater
 
-final class PatchStoreTests: XCTestCase {
-    func testApplyPatchUpdatesResourcesAndVersion() throws {
+struct PatchStoreTests {
+    @Test func applyPatchUpdatesResourcesAndVersion() throws {
         let context = try makeStoreContext()
         let store = LocalResourceStore(rootDirectory: context.rootDirectory)
 
@@ -58,13 +59,13 @@ final class PatchStoreTests: XCTestCase {
 
         try store.applyPatch(patch, targetManifest: targetManifest)
 
-        XCTAssertEqual(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent(TestConstants.messagePath)), replacedData)
-        XCTAssertEqual(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent(TestConstants.newPath)), addedData)
-        XCTAssertEqual(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent(TestConstants.removePath)), Data("delete-me".utf8))
-        XCTAssertEqual(store.currentVersion(), TestConstants.version110)
+        #expect(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent(TestConstants.messagePath)) == replacedData)
+        #expect(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent(TestConstants.newPath)) == addedData)
+        #expect(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent(TestConstants.removePath)) == Data("delete-me".utf8))
+        #expect(store.currentVersion() == TestConstants.version110)
     }
 
-    func testApplyPatchRollsBackWhenBaseResourceIsMissing() throws {
+    @Test func applyPatchRollsBackWhenBaseResourceIsMissing() throws {
         let context = try makeStoreContext()
         let store = LocalResourceStore(rootDirectory: context.rootDirectory)
 
@@ -108,18 +109,20 @@ final class PatchStoreTests: XCTestCase {
             resources: [makeResourceEntry(path: "texts/missing.txt", data: replacement)]
         )
 
-        XCTAssertThrowsError(try store.applyPatch(patch, targetManifest: targetManifest)) { error in
-            guard case ResourceUpdaterError.resourceNotFound(let path) = error else {
-                return XCTFail("unexpected error: \(error)")
-            }
-            XCTAssertEqual(path, "texts/missing.txt")
+        do {
+            try store.applyPatch(patch, targetManifest: targetManifest)
+            Issue.record("expected resourceNotFound")
+        } catch ResourceUpdaterError.resourceNotFound(let path) {
+            #expect(path == "texts/missing.txt")
+        } catch {
+            Issue.record("unexpected error: \(error)")
         }
 
-        XCTAssertEqual(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent("texts/message.txt")), oldData)
-        XCTAssertEqual(store.currentVersion(), "1.0.0")
+        #expect(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent("texts/message.txt")) == oldData)
+        #expect(store.currentVersion() == "1.0.0")
     }
 
-    func testApplyPatchRollsBackWhenPatchIsInvalid() throws {
+    @Test func applyPatchRollsBackWhenPatchIsInvalid() throws {
         let context = try makeStoreContext()
         let store = LocalResourceStore(rootDirectory: context.rootDirectory)
 
@@ -162,18 +165,20 @@ final class PatchStoreTests: XCTestCase {
             resources: [makeResourceEntry(path: "texts/message.txt", data: originalData)]
         )
 
-        XCTAssertThrowsError(try store.applyPatch(invalidPatch, targetManifest: targetManifest)) { error in
-            guard case ResourceUpdaterError.invalidPatchOperation(let reason) = error else {
-                return XCTFail("unexpected error: \(error)")
-            }
-            XCTAssertEqual(reason, "splice out of range")
+        do {
+            try store.applyPatch(invalidPatch, targetManifest: targetManifest)
+            Issue.record("expected invalidPatchOperation")
+        } catch ResourceUpdaterError.invalidPatchOperation(let reason) {
+            #expect(reason == "splice out of range")
+        } catch {
+            Issue.record("unexpected error: \(error)")
         }
 
-        XCTAssertEqual(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent("texts/message.txt")), originalData)
-        XCTAssertEqual(store.currentVersion(), "1.0.0")
+        #expect(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent("texts/message.txt")) == originalData)
+        #expect(store.currentVersion() == "1.0.0")
     }
 
-    func testApplyPatchRemoveDeletesResource() throws {
+    @Test func applyPatchRemoveDeletesResource() throws {
         let context = try makeStoreContext()
         let store = LocalResourceStore(rootDirectory: context.rootDirectory)
 
@@ -214,8 +219,8 @@ final class PatchStoreTests: XCTestCase {
 
         try store.applyPatch(patch, targetManifest: targetManifest)
 
-        XCTAssertEqual(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent("texts/keep.txt")), keptData)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: context.resourcesDirectory.appendingPathComponent("texts/remove.txt").path))
-        XCTAssertEqual(store.currentVersion(), "1.1.0")
+        #expect(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent("texts/keep.txt")) == keptData)
+        #expect(!FileManager.default.fileExists(atPath: context.resourcesDirectory.appendingPathComponent("texts/remove.txt").path))
+        #expect(store.currentVersion() == "1.1.0")
     }
 }

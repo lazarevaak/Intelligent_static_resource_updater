@@ -2,9 +2,7 @@
 //  ResourceEntry.swift
 //  ResourceUpdater
 //
-//  Created by Alexandra Lazareva on 26.01.2026.
-//
-
+//  Created by Alexandra Lazareva on 27.04.2026.
 import Foundation
 
 public struct ResourceEntry: Codable {

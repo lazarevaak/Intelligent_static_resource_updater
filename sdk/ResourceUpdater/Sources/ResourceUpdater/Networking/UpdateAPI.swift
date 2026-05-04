@@ -2,13 +2,8 @@
 //  UpdateAPI.swift
 //  ResourceUpdater
 //
-//  Created by Alexandra Lazareva on 26.01.2026.
-//
-
+//  Created by Alexandra Lazareva on 27.04.2026.
 import Foundation
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
 
 public final class UpdateAPI: @unchecked Sendable {
     private let config: ResourceUpdaterConfig
