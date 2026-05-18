@@ -46,7 +46,7 @@ enum LocationType: String, Codable, CaseIterable {
     var title: String {
         switch self {
         case .supercharger:
-            return "Supercharger"
+            return "Charging Hub"
         case .service:
             return "Service"
         case .parking:

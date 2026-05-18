@@ -31,11 +31,11 @@ final class VehicleDashboardViewModel {
     }
 
     var displayTitle: String {
-        vehicle?.brandTitle ?? "Tesla"
+        vehicle?.brandTitle ?? "Car"
     }
 
     var modelNameText: String {
-        vehicle?.displayName ?? "Tesla"
+        vehicle?.displayName ?? "Demo Car"
     }
 
     var quickActions: [VehicleQuickAction] {
