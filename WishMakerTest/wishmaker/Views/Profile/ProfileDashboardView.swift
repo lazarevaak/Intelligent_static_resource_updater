@@ -36,7 +36,7 @@ struct ProfileDashboardView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
-                .padding(.bottom, 24)
+                .padding(.bottom, AppTabBarMetrics.contentBottomInset)
             }
         }
         .sheet(isPresented: $isAvatarPickerPresented) {

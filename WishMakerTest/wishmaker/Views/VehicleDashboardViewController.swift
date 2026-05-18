@@ -106,7 +106,7 @@ final class VehicleDashboardViewController: UIViewController {
             dashboardCard.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             dashboardCard.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             dashboardCard.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            dashboardCard.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+            dashboardCard.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
 
@@ -162,7 +162,10 @@ final class VehicleDashboardViewController: UIViewController {
 
             quickActionsBar.leadingAnchor.constraint(equalTo: dashboardCard.leadingAnchor, constant: 22),
             quickActionsBar.trailingAnchor.constraint(equalTo: dashboardCard.trailingAnchor, constant: -22),
-            quickActionsBar.bottomAnchor.constraint(equalTo: dashboardCard.bottomAnchor, constant: -20),
+            quickActionsBar.bottomAnchor.constraint(
+                equalTo: dashboardCard.bottomAnchor,
+                constant: -(AppTabBarMetrics.contentBottomInset + 30)
+            ),
             quickActionsBar.heightAnchor.constraint(equalToConstant: 56)
         ])
     }

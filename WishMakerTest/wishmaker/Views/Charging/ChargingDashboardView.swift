@@ -40,7 +40,7 @@ struct ChargingDashboardView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
-                .padding(.bottom, 24)
+                .padding(.bottom, AppTabBarMetrics.contentBottomInset)
             }
             .background(ScrollBounceDisabler())
         }
@@ -210,10 +210,24 @@ struct ChargingDashboardView: View {
                 .frame(height: 110)
                 .blur(radius: 0.4)
 
+            chargingVehicleImage
+                .frame(maxWidth: .infinity)
+                .frame(height: 104)
+                .padding(.horizontal, 12)
+                .shadow(color: AppColors.color(AppColors.chargingStrongGlow), radius: 18)
+        }
+    }
+
+    @ViewBuilder
+    private var chargingVehicleImage: some View {
+        if let image = UIImage.resourceImage(at: viewModel.chargingVehicleImagePath) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+        } else {
             Image(systemName: "car.side.fill")
                 .font(.system(size: 62, weight: .regular))
                 .foregroundStyle(AppColors.color(AppColors.primaryText))
-                .shadow(color: AppColors.color(AppColors.chargingStrongGlow), radius: 20)
         }
     }
 

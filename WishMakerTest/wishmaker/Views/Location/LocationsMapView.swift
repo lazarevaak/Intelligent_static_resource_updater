@@ -9,6 +9,7 @@ import SwiftUI
 struct LocationsMapView: View {
     @StateObject private var viewModel: LocationsViewModel
     @State private var isFavoritesSheetPresented = false
+    @State private var hasRequestedLocationAccess = false
 
     init(viewModel: LocationsViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -24,15 +25,17 @@ struct LocationsMapView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 16)
+
+                VStack(spacing: 0) {
+                    Spacer()
+                    bottomOverlay
+                }
             }
         }
         .background(AppColors.color(AppColors.appBackground))
-        .ignoresSafeArea(edges: .top)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomOverlay
-        }
+        .ignoresSafeArea()
         .onAppear {
-            viewModel.requestLocationAccessIfNeeded()
+            requestLocationAccessAfterInitialRender()
         }
         .alert(
             viewModel.copy.buildRouteTitle,
@@ -62,6 +65,16 @@ struct LocationsMapView: View {
         }
     }
 
+    private func requestLocationAccessAfterInitialRender() {
+        guard !hasRequestedLocationAccess else { return }
+        hasRequestedLocationAccess = true
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            viewModel.requestLocationAccessIfNeeded()
+        }
+    }
+
     private func topOverlay(topInset: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Spacer()
@@ -84,7 +97,7 @@ struct LocationsMapView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.bottom, AppTabBarMetrics.contentBottomInset)
     }
 
     private var mapView: some View {

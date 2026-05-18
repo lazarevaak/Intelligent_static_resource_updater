@@ -12,6 +12,7 @@ enum AppResourcePath {
     static let locations = "locations/locations.json"
     static let vehicles = "vehicles/vehicles.json"
     static let avatarOptions = "profile/avatar-options.json"
+    static let defaultChargingVehicleImage = "images/charging-vehicle.png"
 
     static func localization(_ languageCode: String) -> String {
         "localization/\(languageCode).json"

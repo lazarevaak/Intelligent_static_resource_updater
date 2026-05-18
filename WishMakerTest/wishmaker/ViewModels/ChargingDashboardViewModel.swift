@@ -38,6 +38,14 @@ final class ChargingDashboardViewModel: ObservableObject {
         locationRepository.locations.filter { $0.type == .supercharger }
     }
 
+    var chargingVehicleImagePath: String {
+        let configuration = AppResourceProvider.shared.decode(
+            AppConfiguration.self,
+            from: AppResourcePath.appConfiguration
+        )
+        return configuration?.chargingVehicleImagePath ?? AppResourcePath.defaultChargingVehicleImage
+    }
+
     var batteryPercentText: String {
         "\(Int((charging.batteryLevel * 100).rounded()))%"
     }

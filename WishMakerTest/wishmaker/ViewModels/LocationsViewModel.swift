@@ -42,6 +42,7 @@ final class LocationsViewModel: NSObject, ObservableObject {
     
     private var appStateCancellable: AnyCancellable?
     private var hasCenteredOnUser = false
+    private var isUpdatingLocation = false
 
     init(
         favoriteLocationsStore: FavoriteLocationsStoreProtocol,
@@ -56,7 +57,8 @@ final class LocationsViewModel: NSObject, ObservableObject {
         locations = locationRepository.locations
         super.init()
         locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        locationManager.distanceFilter = 25
         appStateCancellable = appState.stateDidChange.sink { [weak self] in
             self?.refreshResourceBackedState()
         }
@@ -94,7 +96,7 @@ final class LocationsViewModel: NSObject, ObservableObject {
             locationManager.requestWhenInUseAuthorization()
             
         case .authorizedAlways, .authorizedWhenInUse:
-            locationManager.startUpdatingLocation()
+            startUpdatingLocationIfNeeded()
             
         case .denied, .restricted:
             break
@@ -103,6 +105,18 @@ final class LocationsViewModel: NSObject, ObservableObject {
             break
             
         }
+    }
+
+    private func startUpdatingLocationIfNeeded() {
+        guard !isUpdatingLocation else { return }
+        isUpdatingLocation = true
+        locationManager.startUpdatingLocation()
+    }
+
+    private func stopUpdatingLocation() {
+        guard isUpdatingLocation else { return }
+        isUpdatingLocation = false
+        locationManager.stopUpdatingLocation()
     }
 
     func centerOnUser() {
@@ -319,9 +333,9 @@ extension LocationsViewModel: @preconcurrency CLLocationManagerDelegate {
 
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
-            manager.startUpdatingLocation()
+            startUpdatingLocationIfNeeded()
         case .denied, .restricted:
-            manager.stopUpdatingLocation()
+            stopUpdatingLocation()
         case .notDetermined:
             break
         @unknown default:
@@ -338,10 +352,12 @@ extension LocationsViewModel: @preconcurrency CLLocationManagerDelegate {
             hasCenteredOnUser = true
             centerOnUser()
         }
+
+        stopUpdatingLocation()
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         AppLogger.location.error("Location manager failed: \(error.localizedDescription, privacy: .public)")
-        manager.stopUpdatingLocation()
+        stopUpdatingLocation()
     }
 }

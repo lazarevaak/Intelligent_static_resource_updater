@@ -15,14 +15,13 @@ final class RootTabBarController: UITabBarController {
     }
 
     private let iconProvider: TabBarIconProvider
-    private let contentContainers: [TabContentContainerViewController]
+    private var lastLaidOutContentBounds: CGRect = .null
 
     init(viewControllers: [UIViewController]) {
         self.iconProvider = .shared
-        contentContainers = viewControllers.map(TabContentContainerViewController.init(contentController:))
         super.init(nibName: nil, bundle: nil)
-        configureTabBarItems(for: contentContainers)
-        self.viewControllers = contentContainers
+        configureTabBarItems(for: viewControllers)
+        self.viewControllers = viewControllers
     }
 
     @available(*, unavailable)
@@ -39,11 +38,14 @@ final class RootTabBarController: UITabBarController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         layoutTabBar()
+        layoutContentArea()
         layoutTabBarButtons()
-        layoutContentContainers()
+        view.bringSubviewToFront(tabBar)
     }
 
     private func configureTabBar() {
+        view.backgroundColor = AppColors.appBackground
+
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = AppColors.tabBarBackground
@@ -67,6 +69,7 @@ final class RootTabBarController: UITabBarController {
         tabBar.unselectedItemTintColor = normalColor
         tabBar.layer.cornerRadius = 28
         tabBar.layer.masksToBounds = false
+        tabBar.isTranslucent = true
         tabBar.itemPositioning = .automatic
         tabBar.itemWidth = 44
     }
@@ -79,6 +82,25 @@ final class RootTabBarController: UITabBarController {
         frame.origin.x = Layout.tabBarHorizontalInset
         frame.origin.y = view.bounds.height - frame.height - Layout.tabBarBottomInset
         tabBar.frame = frame
+    }
+
+    private func layoutContentArea() {
+        let contentViews = view.subviews.filter { $0 !== tabBar }
+        let needsLayout = lastLaidOutContentBounds != view.bounds
+            || contentViews.contains { $0.frame != view.bounds }
+
+        guard needsLayout else {
+            return
+        }
+
+        lastLaidOutContentBounds = view.bounds
+
+        contentViews.forEach { contentView in
+            if contentView.frame != view.bounds {
+                contentView.frame = view.bounds
+            }
+            contentView.clipsToBounds = false
+        }
     }
 
     private func layoutTabBarButtons() {
@@ -109,13 +131,6 @@ final class RootTabBarController: UITabBarController {
             frame.origin.x = minX + (slotWidth * CGFloat(index))
             frame.size.width = slotWidth
             button.frame = frame
-        }
-    }
-
-    private func layoutContentContainers() {
-        let bottomInset = max(0, view.bounds.maxY - tabBar.frame.minY + AppTabBarMetrics.contentBottomSpacing)
-        contentContainers.forEach { container in
-            container.contentBottomInset = bottomInset
         }
     }
 

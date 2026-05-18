@@ -8,4 +8,5 @@ import Foundation
 
 struct AppConfiguration: Decodable {
     var alternateAppIconName: String?
+    var chargingVehicleImagePath: String?
 }
