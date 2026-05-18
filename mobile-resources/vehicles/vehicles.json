@@ -1,16 +1,16 @@
 [
   {
     "id": "1E7FB8D8-1D34-4A53-9A7D-8EACD8B10001",
-    "brandTitle": "Tesla",
-    "displayName": "Tesla Model 3",
-    "locationPinTitle": "Your Tesla",
+    "brandTitle": "Car",
+    "displayName": "Demo Car One",
+    "locationPinTitle": "Your Car",
     "modelAssetPath": "models/Tesla_2018_Model_3.usdz",
     "currentRangeKm": 340,
     "batteryLevel": 0.76,
     "chargeLimitPercent": 80,
     "preferredChargeLimitPercent": 80,
     "climateSummary": "Interior 20° C",
-    "locationSummary": "Berlin Supercharger route",
+    "locationSummary": "Demo charging route",
     "dashboardQuickActions": [
       { "title": "Lock", "systemName": "lock.fill" },
       { "title": "Climate", "systemName": "fanblades.fill" },
@@ -20,12 +20,12 @@
     "dashboardRows": [
       { "systemName": "car.fill", "title": "Control" },
       { "systemName": "fanblades.fill", "title": "Climate", "subtitle": "Interior 20° C" },
-      { "systemName": "location.north.fill", "title": "Location", "subtitle": "Berlin Supercharger route" }
+      { "systemName": "location.north.fill", "title": "Location", "subtitle": "Demo charging route" }
     ],
     "charging": {
       "title": "Charging",
       "status": "Charging",
-      "locationName": "Tesla Supercharger Berlin",
+      "locationName": "Demo Charging Hub Berlin",
       "estimatedRangeKm": 340,
       "timeUntilFull": "1h 25m",
       "chargingSpeedKw": 72,
@@ -52,7 +52,7 @@
       ],
       "overviewRows": [
         { "systemName": "bolt.fill", "title": "Charge target", "subtitle": "Set to 80%" },
-        { "systemName": "location.north.fill", "title": "Home charging", "subtitle": "Tesla Supercharger Berlin" },
+        { "systemName": "location.north.fill", "title": "Home charging", "subtitle": "Demo Charging Hub Berlin" },
         { "systemName": "lock.shield.fill", "title": "Security", "subtitle": "Face ID enabled" }
       ],
       "quickActions": [
@@ -65,9 +65,9 @@
   },
   {
     "id": "2AF7E6EF-2E08-4A1F-8F6B-0CC4A3A8A001",
-    "brandTitle": "Tesla",
-    "displayName": "Tesla Model Y",
-    "locationPinTitle": "Your Tesla",
+    "brandTitle": "Car",
+    "displayName": "Demo Car Two",
+    "locationPinTitle": "Your Car",
     "modelAssetPath": "models/Tesla_2018_Model_3.usdz",
     "currentRangeKm": 411,
     "batteryLevel": 0.68,
@@ -89,7 +89,7 @@
     "charging": {
       "title": "Charging",
       "status": "Charging",
-      "locationName": "Tesla Supercharger Amsterdam",
+      "locationName": "Demo Charging Hub Amsterdam",
       "estimatedRangeKm": 411,
       "timeUntilFull": "1h 10m",
       "chargingSpeedKw": 64,
