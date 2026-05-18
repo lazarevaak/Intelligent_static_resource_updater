@@ -28,10 +28,10 @@ final class ResourceUpdaterService {
         )
     }
 
-    func applyUpdates() async {
+    func applyUpdates() async -> Bool {
         guard !isApplyingUpdates else {
             AppLogger.resources.info("Resource updater skipped because another update is still running")
-            return
+            return false
         }
 
         isApplyingUpdates = true
@@ -39,9 +39,11 @@ final class ResourceUpdaterService {
 
         do {
             try await updater.applyUpdates()
+            return true
         } catch {
             let nsError = error as NSError
             AppLogger.resources.error("Resource updater failed: \(String(describing: error), privacy: .public). \(error.localizedDescription, privacy: .public). Domain: \(nsError.domain, privacy: .public), code: \(nsError.code)")
+            return false
         }
     }
 }

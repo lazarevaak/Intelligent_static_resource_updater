@@ -3,6 +3,7 @@
 //  wishmaker
 //
 //  Created by Alexandra Lazareva on 27.04.2026.
+import Combine
 import SceneKit
 import UIKit
 
@@ -41,6 +42,7 @@ final class TeslaModelViewerViewController: UIViewController {
     private let rightButton = UIButton(type: .system)
     private let hintLabel = InsetLabel()
     private let vehicle: TeslaVehicle
+    private var themeCancellable: AnyCancellable?
 
     private let cameraNode = SCNNode()
     private let modelRootNode = SCNNode()
@@ -63,6 +65,7 @@ final class TeslaModelViewerViewController: UIViewController {
         configureView()
         configureScene()
         configureOverlay()
+        bindThemeChanges()
         updateCameraPosition(animated: false)
     }
 
@@ -217,6 +220,28 @@ final class TeslaModelViewerViewController: UIViewController {
             rightButton.widthAnchor.constraint(equalToConstant: Layout.buttonSize),
             rightButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize)
         ])
+    }
+
+    private func bindThemeChanges() {
+        themeCancellable = ThemeProvider.shared.$theme
+            .sink { [weak self] _ in
+                self?.applyCurrentTheme()
+            }
+    }
+
+    private func applyCurrentTheme() {
+        view.backgroundColor = AppColors.modelViewerBackground
+        closeButton.tintColor = AppColors.primaryText
+        closeButton.backgroundColor = AppColors.modelViewerControlBackground
+        closeButton.layer.borderColor = AppColors.modelViewerControlBorder.cgColor
+        hintLabel.textColor = AppColors.mapOverlaySubtitle
+        hintLabel.backgroundColor = AppColors.modelViewerHintBackground
+
+        [upButton, downButton, leftButton, rightButton].forEach { button in
+            button.tintColor = AppColors.primaryText
+            button.backgroundColor = AppColors.modelViewerControlBackground
+            button.layer.borderColor = AppColors.modelViewerControlBorder.cgColor
+        }
     }
 
     private func updateCameraPosition(animated: Bool) {

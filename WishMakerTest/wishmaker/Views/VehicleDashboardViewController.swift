@@ -3,6 +3,7 @@
 //  wishmaker
 //
 //  Created by Alexandra Lazareva on 27.04.2026.
+import Combine
 import SceneKit
 import UIKit
 
@@ -64,6 +65,7 @@ final class VehicleDashboardViewController: UIViewController {
     private let angleButtons: [UIButton] = ViewAnglePreset.allCases.map { _ in UIButton(type: .system) }
     private var selectedAnglePreset: ViewAnglePreset = .front
     private var modelWrapperNode: SCNNode?
+    private var themeCancellable: AnyCancellable?
 
     init(viewModel: VehicleDashboardViewModel) {
         self.viewModel = viewModel
@@ -81,6 +83,7 @@ final class VehicleDashboardViewController: UIViewController {
         configureLayout()
         configureDashboardCard()
         setupBindings()
+        bindThemeChanges()
         configureModelView()
         viewModel.load()
     }
@@ -205,6 +208,21 @@ final class VehicleDashboardViewController: UIViewController {
         ])
 
         configureModelView()
+    }
+
+    private func bindThemeChanges() {
+        themeCancellable = ThemeProvider.shared.$theme
+            .sink { [weak self] _ in
+                self?.applyCurrentTheme()
+            }
+    }
+
+    private func applyCurrentTheme() {
+        view.backgroundColor = AppColors.appBackground
+        titleLabel.textColor = AppColors.primaryText
+        quickActionsBar.backgroundColor = AppColors.quickActionsBackground
+        refreshVehicleContent()
+        updateAngleButtonSelection()
     }
 
     private func configureAngleButtons() {

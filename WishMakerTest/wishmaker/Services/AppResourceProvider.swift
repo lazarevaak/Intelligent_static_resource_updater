@@ -32,10 +32,19 @@ enum AppResourceStorage {
 final class AppResourceProvider {
     static let shared = AppResourceProvider()
 
+    private var cachedURLs: [String: URL?] = [:]
+    private var cachedData: [String: Data] = [:]
+
     private init() {}
 
     func url(for relativePath: String) -> URL? {
-        updatedURL(for: relativePath) ?? bundledURL(for: relativePath)
+        if let cachedURL = cachedURLs[relativePath] {
+            return cachedURL
+        }
+
+        let resolvedURL = updatedURL(for: relativePath) ?? bundledURL(for: relativePath)
+        cachedURLs[relativePath] = resolvedURL
+        return resolvedURL
     }
 
     func resourceExists(at relativePath: String) -> Bool {
@@ -43,13 +52,19 @@ final class AppResourceProvider {
     }
 
     func data(for relativePath: String) -> Data? {
+        if let cachedData = cachedData[relativePath] {
+            return cachedData
+        }
+
         guard let url = url(for: relativePath) else {
             AppLogger.resources.warning("Resource not found: \(relativePath, privacy: .public)")
             return nil
         }
 
         do {
-            return try Data(contentsOf: url)
+            let loadedData = try Data(contentsOf: url)
+            cachedData[relativePath] = loadedData
+            return loadedData
         } catch {
             AppLogger.resources.error("Failed to read resource \(relativePath, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return nil
@@ -65,6 +80,11 @@ final class AppResourceProvider {
             AppLogger.resources.error("Failed to decode \(String(describing: type), privacy: .public) from \(relativePath, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return nil
         }
+    }
+
+    func reloadCachedResources() {
+        cachedURLs.removeAll()
+        cachedData.removeAll()
     }
 
     private func updatedURL(for relativePath: String) -> URL? {

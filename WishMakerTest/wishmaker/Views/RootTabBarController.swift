@@ -3,6 +3,7 @@
 //  wishmaker
 //
 //  Created by Alexandra Lazareva on 27.04.2026.
+import Combine
 import UIKit
 
 @MainActor
@@ -16,6 +17,7 @@ final class RootTabBarController: UITabBarController {
 
     private let iconProvider: TabBarIconProvider
     private var lastLaidOutContentBounds: CGRect = .null
+    private var themeCancellable: AnyCancellable?
 
     init(viewControllers: [UIViewController]) {
         self.iconProvider = .shared
@@ -33,6 +35,7 @@ final class RootTabBarController: UITabBarController {
         super.viewDidLoad()
         configureTabBar()
         applyIcons()
+        bindThemeChanges()
     }
 
     override func viewDidLayoutSubviews() {
@@ -72,6 +75,14 @@ final class RootTabBarController: UITabBarController {
         tabBar.isTranslucent = true
         tabBar.itemPositioning = .automatic
         tabBar.itemWidth = 44
+    }
+
+    private func bindThemeChanges() {
+        themeCancellable = ThemeProvider.shared.$theme
+            .sink { [weak self] _ in
+                self?.configureTabBar()
+                self?.applyIcons()
+            }
     }
 
     private func layoutTabBar() {

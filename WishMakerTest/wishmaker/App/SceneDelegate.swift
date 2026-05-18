@@ -95,11 +95,13 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     private func refreshRemoteResources() async {
-        await ResourceUpdaterService.shared.applyUpdates()
+        let didApplyUpdates = await ResourceUpdaterService.shared.applyUpdates()
+        guard didApplyUpdates else { return }
         applyLoadedResources()
     }
 
     private func applyLoadedResources() {
+        AppResourceProvider.shared.reloadCachedResources()
         Localization.resetCache()
         ThemeProvider.shared.reloadTheme()
         AppIconService.shared.applyConfiguredIcon()
@@ -109,7 +111,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     private func applyResourceUpdatesBeforeStart() async {
         let result = await withTaskGroup(of: ResourceUpdateStartupResult.self) { group in
             group.addTask {
-                await ResourceUpdaterService.shared.applyUpdates()
+                _ = await ResourceUpdaterService.shared.applyUpdates()
                 return .completed
             }
             group.addTask { [resourceUpdateTimeoutNanoseconds] in
