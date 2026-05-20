@@ -227,10 +227,64 @@ struct ResourceUpdaterFlowTests {
             Issue.record("unexpected error: \(error)")
         }
     }
+
+    @Test func applyUpdatesSkipsWhenMLRejectsUpdate() async throws {
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let context = try makeStoreContext()
+        let store = LocalResourceStore(rootDirectory: context.rootDirectory)
+        let session = makeMockedSession()
+        let signing = try SigningFixture()
+        let updater = ResourceUpdater(
+            config: makeConfig(storageDirectory: context.rootDirectory),
+            session: session,
+            decisionEngine: AlwaysDenyUpdateDecisionEngine()
+        )
+
+        let oldData = Data("hello-old".utf8)
+        let newData = Data("hello-new".utf8)
+
+        try writeResource(oldData, at: "texts/message.txt", in: context.resourcesDirectory)
+        try store.save(manifest: makeManifest(
+            version: "1.0.0",
+            resources: [makeResourceEntry(path: "texts/message.txt", data: oldData)]
+        ))
+
+        let manifest = makeManifest(
+            version: "1.1.0",
+            resources: [makeResourceEntry(path: "texts/message.txt", data: newData)]
+        )
+        let updates = makeManifestOnlyUpdates(signing: signing, manifest: manifest)
+        let updatesData = try canonicalJSON(updates.payload)
+        let updatesHeaders = updates.headers
+        let keyData = try canonicalJSON(signing.publicKey)
+
+        MockURLProtocol.requestHandler = { request in
+            switch request.url?.path {
+            case "/v1/updates/demoapp":
+                return makeHTTPResponse(bodyData: updatesData, headers: updatesHeaders)
+            case "/v1/keys/main":
+                return makeHTTPResponse(bodyData: keyData, headers: [:])
+            default:
+                throw NSError(domain: "UnexpectedURL", code: 1)
+            }
+        }
+
+        try await updater.applyUpdates()
+
+        #expect(try Data(contentsOf: context.resourcesDirectory.appendingPathComponent("texts/message.txt")) == oldData)
+        #expect(store.currentVersion() == "1.0.0")
+    }
 }
 
 private struct AlwaysAllowUpdateDecisionEngine: UpdateDecisionEngine {
     func evaluate(context: UpdateDecisionContext, isCriticalUpdate: Bool) async -> UpdateDecision {
         UpdateDecision(shouldUpdate: true, probability: 1)
+    }
+}
+
+private struct AlwaysDenyUpdateDecisionEngine: UpdateDecisionEngine {
+    func evaluate(context: UpdateDecisionContext, isCriticalUpdate: Bool) async -> UpdateDecision {
+        UpdateDecision(shouldUpdate: false, probability: 0)
     }
 }

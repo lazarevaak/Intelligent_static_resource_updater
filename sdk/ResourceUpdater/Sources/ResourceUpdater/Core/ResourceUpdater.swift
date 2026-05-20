@@ -47,17 +47,7 @@ public final class ResourceUpdater: @unchecked Sendable {
                     return
                 }
 
-                let context = try await contextBuilder.makeContext(
-                    from: updates,
-                    resourcePath: config.appId,
-                    storageDirectory: config.storageDirectory
-                )
-
-                let decision = await decisionEngine.evaluate(
-                    context: context,
-                    isCriticalUpdate: Self.isCriticalUpdate(reason: updates.reason)
-                )
-                Self.logDecision(decision, context: context, updates: updates, mode: "check")
+                let decision = try await evaluateDecision(for: updates, mode: "check")
 
                 completion(.success(decision.shouldUpdate))
             } catch {
@@ -93,7 +83,11 @@ public final class ResourceUpdater: @unchecked Sendable {
             throw ResourceUpdaterError.invalidPatchOperation("unknown decision \(updates.decision)")
         }
 
-        await logDecisionForApply(updates)
+        let decision = try await evaluateDecision(for: updates, mode: "apply")
+        guard decision.shouldUpdate else {
+            Self.logger.info("ML rejected update apply latest=\(updates.latestVersion, privacy: .public) reason=\(updates.reason, privacy: .public)")
+            return
+        }
 
         switch updates.decision {
         case "patch":
@@ -118,21 +112,18 @@ public final class ResourceUpdater: @unchecked Sendable {
         return lower.contains("critical") || lower.contains("security")
     }
 
-    private func logDecisionForApply(_ updates: UpdatesResponse) async {
-        do {
-            let context = try await contextBuilder.makeContext(
-                from: updates,
-                resourcePath: config.appId,
-                storageDirectory: config.storageDirectory
-            )
-            let decision = await decisionEngine.evaluate(
-                context: context,
-                isCriticalUpdate: Self.isCriticalUpdate(reason: updates.reason)
-            )
-            Self.logDecision(decision, context: context, updates: updates, mode: "apply")
-        } catch {
-            Self.logger.error("ML decision logging failed mode=apply latest=\(updates.latestVersion, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-        }
+    private func evaluateDecision(for updates: UpdatesResponse, mode: String) async throws -> UpdateDecision {
+        let context = try await contextBuilder.makeContext(
+            from: updates,
+            resourcePath: config.appId,
+            storageDirectory: config.storageDirectory
+        )
+        let decision = await decisionEngine.evaluate(
+            context: context,
+            isCriticalUpdate: Self.isCriticalUpdate(reason: updates.reason)
+        )
+        Self.logDecision(decision, context: context, updates: updates, mode: mode)
+        return decision
     }
 
     private static func logUpdateResponse(
