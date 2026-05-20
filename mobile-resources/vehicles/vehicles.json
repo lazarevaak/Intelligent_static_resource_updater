@@ -1,273 +1,129 @@
 [
   {
     "id": "1E7FB8D8-1D34-4A53-9A7D-8EACD8B10001",
-    "brandTitle": "Cyber Tesla",
-    "displayName": "Tesla Cybertruck Red Pack",
-    "locationPinTitle": "Your Cybertruck Red",
-    "modelAssetPath": "models/Tesla_Cybertruck.usdz",
-    "currentRangeKm": 515,
+    "brandTitle": "Car",
+    "displayName": "Demo Car One",
+    "locationPinTitle": "Your Car",
+    "modelAssetPath": "models/Tesla_2018_Model_3.usdz",
+    "currentRangeKm": 340,
     "batteryLevel": 0.76,
     "chargeLimitPercent": 80,
     "preferredChargeLimitPercent": 80,
-    "climateSummary": "Red cabin 20° C",
-    "locationSummary": "Cybertruck red route",
+    "climateSummary": "Interior 20° C",
+    "locationSummary": "Demo charging route",
     "dashboardQuickActions": [
-      {
-        "title": "Lock",
-        "systemName": "lock.fill"
-      },
-      {
-        "title": "Climate",
-        "systemName": "fanblades.fill"
-      },
-      {
-        "title": "Charging",
-        "systemName": "bolt.fill",
-        "isHighlighted": true
-      },
-      {
-        "title": "Summon",
-        "systemName": "car.rear.waves.up.fill"
-      }
+      { "title": "Lock", "systemName": "lock.fill" },
+      { "title": "Climate", "systemName": "fanblades.fill" },
+      { "title": "Charging", "systemName": "bolt.fill", "isHighlighted": true },
+      { "title": "Summon", "systemName": "car.rear.waves.up.fill" }
     ],
     "dashboardRows": [
-      {
-        "systemName": "car.fill",
-        "title": "Cyber Control"
-      },
-      {
-        "systemName": "fanblades.fill",
-        "title": "Cyber Climate",
-        "subtitle": "Cyber Cybertruck cabin 20° C"
-      },
-      {
-        "systemName": "location.north.fill",
-        "title": "Cyber Location",
-        "subtitle": "Cyber Cybertruck Supercharger route"
-      }
+      { "systemName": "car.fill", "title": "Control" },
+      { "systemName": "fanblades.fill", "title": "Climate", "subtitle": "Interior 20° C" },
+      { "systemName": "location.north.fill", "title": "Location", "subtitle": "Demo charging route" }
     ],
     "charging": {
-      "title": "Cyber Charging",
-      "status": "Red Active",
-      "locationName": "Cybertruck Red Supercharger",
-      "estimatedRangeKm": 515,
+      "title": "Charging",
+      "status": "Charging",
+      "locationName": "Demo Charging Hub Berlin",
+      "estimatedRangeKm": 340,
       "timeUntilFull": "1h 25m",
       "chargingSpeedKw": 72,
       "addedEnergyKWh": 24,
       "addedRangeKm": 150,
-      "chargingCost": "€0.00 red test",
-      "recommendedLimitText": "Red pack recommends 90%",
+      "chargingCost": "€12.40",
+      "recommendedLimitText": "Recommended: 80%",
       "controls": [
-        {
-          "title": "Cyber Start Charging",
-          "systemName": "play.fill",
-          "isHighlighted": true
-        },
-        {
-          "title": "Cyber Stop Charging",
-          "systemName": "stop.fill"
-        },
-        {
-          "title": "Cyber Open Charge Port",
-          "systemName": "powerplug.fill"
-        },
-        {
-          "title": "Cyber Set Charge Limit",
-          "systemName": "slider.horizontal.3"
-        },
-        {
-          "title": "Cyber Schedule Charging",
-          "systemName": "calendar.badge.clock"
-        }
+        { "title": "Start Charging", "systemName": "play.fill", "isHighlighted": true },
+        { "title": "Stop Charging", "systemName": "stop.fill" },
+        { "title": "Open Charge Port", "systemName": "powerplug.fill" },
+        { "title": "Set Charge Limit", "systemName": "slider.horizontal.3" },
+        { "title": "Schedule Charging", "systemName": "calendar.badge.clock" }
       ]
     },
     "profile": {
-      "title": "Cyber Profile",
-      "membershipTitle": "Cyber premium driver",
+      "title": "Profile",
+      "membershipTitle": "Premium driver",
       "tripsCount": 148,
       "rating": 4.9,
       "preferences": [
-        {
-          "title": "Cyber Autopilot",
-          "systemName": "steeringwheel",
-          "tintStyle": "accent"
-        },
-        {
-          "title": "Cyber Climate",
-          "systemName": "fanblades.fill",
-          "tintStyle": "muted"
-        }
+        { "title": "Autopilot", "systemName": "steeringwheel", "tintStyle": "accent" },
+        { "title": "Climate", "systemName": "fanblades.fill", "tintStyle": "muted" }
       ],
       "overviewRows": [
-        {
-          "systemName": "bolt.fill",
-          "title": "Cyber Charge target",
-          "subtitle": "Cyber Set to 80%"
-        },
-        {
-          "systemName": "location.north.fill",
-          "title": "Cyber Home charging",
-          "subtitle": "Cyber Cybertruck Supercharger"
-        },
-        {
-          "systemName": "lock.shield.fill",
-          "title": "Cyber Security",
-          "subtitle": "Cyber Face ID enabled"
-        }
+        { "systemName": "bolt.fill", "title": "Charge target", "subtitle": "Set to 80%" },
+        { "systemName": "location.north.fill", "title": "Home charging", "subtitle": "Demo Charging Hub Berlin" },
+        { "systemName": "lock.shield.fill", "title": "Security", "subtitle": "Face ID enabled" }
       ],
       "quickActions": [
-        {
-          "title": "Cyber Control",
-          "systemName": "car.fill"
-        },
-        {
-          "title": "Cyber Climate",
-          "systemName": "fanblades.fill"
-        },
-        {
-          "title": "Cyber Trips",
-          "systemName": "map.fill"
-        },
-        {
-          "title": "Cyber Account",
-          "systemName": "person.crop.circle.fill"
-        }
+        { "title": "Control", "systemName": "car.fill" },
+        { "title": "Climate", "systemName": "fanblades.fill" },
+        { "title": "Trips", "systemName": "map.fill" },
+        { "title": "Account", "systemName": "person.crop.circle.fill" }
       ]
     }
   },
   {
     "id": "2AF7E6EF-2E08-4A1F-8F6B-0CC4A3A8A001",
-    "brandTitle": "Cyber Tesla",
-    "displayName": "Tesla Cybertruck Red Pack",
-    "locationPinTitle": "Your Cybertruck Red",
-    "modelAssetPath": "models/Tesla_Cybertruck.usdz",
-    "currentRangeKm": 515,
+    "brandTitle": "Car",
+    "displayName": "Demo Car Two",
+    "locationPinTitle": "Your Car",
+    "modelAssetPath": "models/Tesla_2018_Model_3.usdz",
+    "currentRangeKm": 411,
     "batteryLevel": 0.68,
     "chargeLimitPercent": 85,
     "preferredChargeLimitPercent": 85,
-    "climateSummary": "Red cabin 20° C",
-    "locationSummary": "Cybertruck red route",
+    "climateSummary": "Interior 21° C",
+    "locationSummary": "Home charging",
     "dashboardQuickActions": [
-      {
-        "title": "Lock",
-        "systemName": "lock.fill"
-      },
-      {
-        "title": "Climate",
-        "systemName": "fanblades.fill"
-      },
-      {
-        "title": "Charging",
-        "systemName": "bolt.fill",
-        "isHighlighted": true
-      },
-      {
-        "title": "Summon",
-        "systemName": "car.rear.waves.up.fill"
-      }
+      { "title": "Lock", "systemName": "lock.fill" },
+      { "title": "Climate", "systemName": "fanblades.fill" },
+      { "title": "Charging", "systemName": "bolt.fill", "isHighlighted": true },
+      { "title": "Summon", "systemName": "car.rear.waves.up.fill" }
     ],
     "dashboardRows": [
-      {
-        "systemName": "car.fill",
-        "title": "Cyber Control"
-      },
-      {
-        "systemName": "fanblades.fill",
-        "title": "Cyber Climate",
-        "subtitle": "Cyber Cybertruck cabin 20° C"
-      },
-      {
-        "systemName": "location.north.fill",
-        "title": "Cyber Location",
-        "subtitle": "Cyber Cybertruck Supercharger route"
-      }
+      { "systemName": "car.fill", "title": "Control" },
+      { "systemName": "fanblades.fill", "title": "Climate", "subtitle": "Interior 21° C" },
+      { "systemName": "location.north.fill", "title": "Location", "subtitle": "Home charging" }
     ],
     "charging": {
-      "title": "Cyber Charging",
-      "status": "Red Active",
-      "locationName": "Cybertruck Red Supercharger",
-      "estimatedRangeKm": 515,
+      "title": "Charging",
+      "status": "Charging",
+      "locationName": "Demo Charging Hub Amsterdam",
+      "estimatedRangeKm": 411,
       "timeUntilFull": "1h 10m",
       "chargingSpeedKw": 64,
       "addedEnergyKWh": 18,
       "addedRangeKm": 120,
-      "chargingCost": "€0.00 red test",
-      "recommendedLimitText": "Red pack recommends 90%",
+      "chargingCost": "€9.80",
+      "recommendedLimitText": "Recommended: 85%",
       "controls": [
-        {
-          "title": "Cyber Start Charging",
-          "systemName": "play.fill",
-          "isHighlighted": true
-        },
-        {
-          "title": "Cyber Stop Charging",
-          "systemName": "stop.fill"
-        },
-        {
-          "title": "Cyber Open Charge Port",
-          "systemName": "powerplug.fill"
-        },
-        {
-          "title": "Cyber Set Charge Limit",
-          "systemName": "slider.horizontal.3"
-        },
-        {
-          "title": "Cyber Schedule Charging",
-          "systemName": "calendar.badge.clock"
-        }
+        { "title": "Start Charging", "systemName": "play.fill", "isHighlighted": true },
+        { "title": "Stop Charging", "systemName": "stop.fill" },
+        { "title": "Open Charge Port", "systemName": "powerplug.fill" },
+        { "title": "Set Charge Limit", "systemName": "slider.horizontal.3" },
+        { "title": "Schedule Charging", "systemName": "calendar.badge.clock" }
       ]
     },
     "profile": {
-      "title": "Cyber Profile",
-      "membershipTitle": "Cyber premium driver",
+      "title": "Profile",
+      "membershipTitle": "Premium driver",
       "tripsCount": 96,
       "rating": 4.8,
       "preferences": [
-        {
-          "title": "Cyber Autopilot",
-          "systemName": "steeringwheel",
-          "tintStyle": "accent"
-        },
-        {
-          "title": "Cyber Climate",
-          "systemName": "fanblades.fill",
-          "tintStyle": "muted"
-        }
+        { "title": "Autopilot", "systemName": "steeringwheel", "tintStyle": "accent" },
+        { "title": "Climate", "systemName": "fanblades.fill", "tintStyle": "muted" }
       ],
       "overviewRows": [
-        {
-          "systemName": "bolt.fill",
-          "title": "Cyber Charge target",
-          "subtitle": "Cyber Set to 85%"
-        },
-        {
-          "systemName": "location.north.fill",
-          "title": "Cyber Home charging",
-          "subtitle": "Cyber Cybertruck Supercharger"
-        },
-        {
-          "systemName": "lock.shield.fill",
-          "title": "Cyber Security",
-          "subtitle": "Cyber Face ID enabled"
-        }
+        { "systemName": "bolt.fill", "title": "Charge target", "subtitle": "Set to 85%" },
+        { "systemName": "location.north.fill", "title": "Home charging", "subtitle": "Amsterdam" },
+        { "systemName": "lock.shield.fill", "title": "Security", "subtitle": "Face ID enabled" }
       ],
       "quickActions": [
-        {
-          "title": "Cyber Control",
-          "systemName": "car.fill"
-        },
-        {
-          "title": "Cyber Climate",
-          "systemName": "fanblades.fill"
-        },
-        {
-          "title": "Cyber Trips",
-          "systemName": "map.fill"
-        },
-        {
-          "title": "Cyber Account",
-          "systemName": "person.crop.circle.fill"
-        }
+        { "title": "Control", "systemName": "car.fill" },
+        { "title": "Climate", "systemName": "fanblades.fill" },
+        { "title": "Trips", "systemName": "map.fill" },
+        { "title": "Account", "systemName": "person.crop.circle.fill" }
       ]
     }
   }
